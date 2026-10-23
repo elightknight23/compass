@@ -1,0 +1,10 @@
+[
+  {"date": "2026-11-18", "name": "College Founders' Day", "kind": "college"},
+  {"date": "2026-12-25", "name": "Christmas", "kind": "public"},
+  {"date": "2027-01-01", "name": "New Year's Day", "kind": "public"},
+  {"date": "2027-01-26", "name": "Republic Day", "kind": "public"},
+  {"date": "2027-04-14", "name": "Tamil New Year / Ambedkar Jayanti", "kind": "public"},
+  {"date": "2027-05-01", "name": "May Day", "kind": "public"},
+  {"date": "2027-08-15", "name": "Independence Day", "kind": "public"},
+  {"date": "2027-10-02", "name": "Gandhi Jayanti", "kind": "public"}
+]

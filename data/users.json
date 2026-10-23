@@ -1,0 +1,51 @@
+[
+  {
+    "id": "U001",
+    "username": "ravi.kumar",
+    "name": "Ravi Kumar",
+    "role": "student",
+    "department": "Computer Science and Engineering",
+    "year": 3,
+    "section": "CSE-B",
+    "residence": "hosteller",
+    "context": "Third-year CSE, hosteller in Block B. Attendance just above the line."
+  },
+  {
+    "id": "U002",
+    "username": "priya.sharma",
+    "name": "Priya Sharma",
+    "role": "student",
+    "department": "Electronics and Communication Engineering",
+    "year": 2,
+    "section": "ECE-A",
+    "residence": "day scholar",
+    "context": "Second-year ECE, day scholar. Comfortable attendance."
+  },
+  {
+    "id": "U003",
+    "username": "arjun.menon",
+    "name": "Arjun Menon",
+    "role": "student",
+    "department": "Computer Science and Engineering",
+    "year": 3,
+    "section": "CSE-B",
+    "residence": "day scholar",
+    "context": "Third-year CSE, takes college bus 7. Already below the attendance requirement."
+  },
+  {
+    "id": "U101",
+    "username": "meena.krishnan",
+    "name": "Meena Krishnan",
+    "role": "hostel_warden",
+    "department": "Hostel and Campus Facilities",
+    "context": "Hostel warden. Resolves facility complaints; can read any record; cannot decide leave."
+  },
+  {
+    "id": "U102",
+    "username": "lakshmi.narayanan",
+    "name": "Dr. Lakshmi Narayanan",
+    "role": "faculty_advisor",
+    "department": "Computer Science and Engineering",
+    "context": "Faculty advisor. Approves and rejects OD and leave; can read any record; cannot resolve complaints."
+  }
+]

@@ -1,0 +1,5 @@
+[
+  {"user_id": "U001", "attended": 457, "held": 600, "as_of": "2026-10-21"},
+  {"user_id": "U002", "attended": 548, "held": 600, "as_of": "2026-10-21"},
+  {"user_id": "U003", "attended": 438, "held": 600, "as_of": "2026-10-21"}
+]
