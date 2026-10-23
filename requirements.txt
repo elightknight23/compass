@@ -1,0 +1,18 @@
+# Pinned for demo-day stability (Python 3.14). If you change a pin, re-run
+# the offline suite: bash scripts/run_tests.sh
+fastapi==0.139.2
+uvicorn[standard]==0.51.0
+pydantic==2.13.4
+python-dotenv==1.2.2
+openai==2.45.0            # OpenAI-compatible client for GitHub Models and Gemini
+httpx==0.28.1             # app/llm.py builds the shared connection pool itself
+
+# Agent stack
+langgraph==1.2.9          # orchestration (classify -> route -> act -> respond)
+chromadb==1.5.9           # local vector store; also ships the ONNX MiniLM embedder
+onnxruntime==1.27.0       # runs all-MiniLM-L6-v2 on CPU — no PyTorch needed
+tiktoken==0.13.0          # token counting for structure-aware chunking
+
+# Records
+SQLAlchemy==2.1.6
+psycopg[binary]==3.3.6

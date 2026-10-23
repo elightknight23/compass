@@ -1,0 +1,33 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# the vector index is a build artifact — rebuild with scripts/index_docs.py
+data/chroma/
+
+# transient artifact of JsonBackend's atomic write
+*.json.tmp
+
+# live demo state — drifts every run; records.json.seed is the committed truth
+data/records.json
+data/events.json
+data/records.json.*bak
+data/events.json.*bak
+
+# generated HMAC key for session cookies — machine-local, never committed
+data/.session_secret
+
+# frontend build output and dependencies
+web/node_modules/
+web/dist/
+
+# local tooling config
+.DS_Store
+
+# private working notes from the predecessor project — not part of Compass
+PROJECT_PLAN.md
+context/
+docs/ATLAS_CONTEXT.md
+coursework.md
