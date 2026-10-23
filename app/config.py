@@ -67,7 +67,7 @@ LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "0"))
 # database is unreachable during a demo, flip this and restart.
 RECORD_BACKEND = os.getenv("RECORD_BACKEND", "json")
 DATABASE_URL = os.getenv(
-    "DATABASE_URL", "postgresql+psycopg://compass:compass@localhost:5432/compass"
+    "DATABASE_URL", "postgresql+psycopg://compass:compass@localhost:5433/compass"
 )
 
 # -- the domain ---------------------------------------------------------------
