@@ -420,4 +420,6 @@ def spa(path: str):
             content={"detail": "Frontend not built. Run: cd web && npm install && npm run build "
                                "(or use the Vite dev server on :5173)."},
         )
-    return FileResponse(index)
+    # no-cache on the shell only: it names the hashed asset files, so a stale
+    # copy keeps loading the previous build's JavaScript after a rebuild.
+    return FileResponse(index, headers={"Cache-Control": "no-cache"})
