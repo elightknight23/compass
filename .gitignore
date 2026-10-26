@@ -22,6 +22,7 @@ data/.session_secret
 # frontend build output and dependencies
 web/node_modules/
 web/dist/
+web/*.tsbuildinfo
 
 # local tooling config
 .DS_Store
