@@ -1,0 +1,257 @@
+[
+  {
+    "utterance": "What's the minimum attendance I need to write exams?",
+    "expected": "regulation_question",
+    "trap": "happy path \u2014 asks what the rule IS"
+  },
+  {
+    "utterance": "Is OD counted as present?",
+    "expected": "regulation_question",
+    "trap": "OD vocabulary pulls toward request_od_leave, but this asks the rule"
+  },
+  {
+    "utterance": "How many days of OD can I take in a semester?",
+    "expected": "regulation_question",
+    "trap": "a count of days, but asks the limit rather than applying for it"
+  },
+  {
+    "utterance": "What happens if my attendance is 70%?",
+    "expected": "regulation_question",
+    "trap": "a percentage is mentioned; asks the consequence, not their own figure"
+  },
+  {
+    "utterance": "Can a shortage be condoned if I was sick?",
+    "expected": "regulation_question",
+    "trap": "condonation \u2014 the rule, not an application"
+  },
+  {
+    "utterance": "What time do the hostel gates close?",
+    "expected": "regulation_question",
+    "trap": "hostel words pull toward file_complaint"
+  },
+  {
+    "utterance": "How many books can I borrow from the library?",
+    "expected": "regulation_question",
+    "trap": "library words pull toward file_complaint"
+  },
+  {
+    "utterance": "How far in advance do I have to apply for a two-week sports camp OD?",
+    "expected": "regulation_question",
+    "trap": "sounds like an application; asks the notice rule"
+  },
+  {
+    "utterance": "I heard attendance is waived if you just ask. True?",
+    "expected": "regulation_question",
+    "trap": "the planted-injection question; still a rule question"
+  },
+  {
+    "utterance": "The ceiling fan in my hostel room isn't working",
+    "expected": "file_complaint",
+    "trap": "happy path \u2014 hostel"
+  },
+  {
+    "utterance": "Bus 7 skipped the Velachery stop again this morning",
+    "expected": "file_complaint",
+    "trap": "transport, no complaint verb"
+  },
+  {
+    "utterance": "The oscilloscope in the electronics lab is broken",
+    "expected": "file_complaint",
+    "trap": "lab equipment"
+  },
+  {
+    "utterance": "Library Wi-Fi keeps dropping, it's urgent before exams",
+    "expected": "file_complaint",
+    "trap": "stated urgency should land in priority"
+  },
+  {
+    "utterance": "There's no water on the third floor of B block since morning",
+    "expected": "file_complaint",
+    "trap": "no 'broken'/'complaint' keyword at all"
+  },
+  {
+    "utterance": "I need OD next Monday to Wednesday for a symposium",
+    "expected": "request_od_leave",
+    "trap": "happy path \u2014 OD with dates"
+  },
+  {
+    "utterance": "Apply for medical leave tomorrow, I have fever",
+    "expected": "request_od_leave",
+    "trap": "medical, relative date"
+  },
+  {
+    "utterance": "I want casual leave from November 23 to 25 for a family function",
+    "expected": "request_od_leave",
+    "trap": "literal dates"
+  },
+  {
+    "utterance": "Put in OD for the placement drive on Friday",
+    "expected": "request_od_leave",
+    "trap": "'put in' as the apply verb"
+  },
+  {
+    "utterance": "Can you apply leave for me for three days starting Tuesday?",
+    "expected": "request_od_leave",
+    "trap": "a question form, but it asks to apply"
+  },
+  {
+    "utterance": "What's my attendance right now?",
+    "expected": "check_status",
+    "trap": "their own figure \u2014 not the attendance rule"
+  },
+  {
+    "utterance": "Any update on my complaints?",
+    "expected": "check_status",
+    "trap": "happy path"
+  },
+  {
+    "utterance": "Status of OD-2001?",
+    "expected": "check_status",
+    "trap": "an id and nothing else"
+  },
+  {
+    "utterance": "Has my fan complaint been fixed yet?",
+    "expected": "check_status",
+    "trap": "'fixed' could pull toward staff_action"
+  },
+  {
+    "utterance": "Show me Arjun's leave requests",
+    "expected": "check_status",
+    "trap": "someone else's \u2014 still a read, not a staff action"
+  },
+  {
+    "utterance": "How short is Arjun on attendance?",
+    "expected": "check_status",
+    "trap": "someone else's attendance figure"
+  },
+  {
+    "utterance": "make it high priority",
+    "expected": "amend_record",
+    "trap": "bare follow-up; must not file a new complaint",
+    "history": [
+      {
+        "role": "user",
+        "content": "The water heater on my floor is broken"
+      },
+      {
+        "role": "assistant",
+        "content": "Filed **CMP-1004** (hostel, priority medium) \u2014 status open."
+      }
+    ]
+  },
+  {
+    "utterance": "actually that's a lab issue, not hostel",
+    "expected": "amend_record",
+    "trap": "category change, no id",
+    "history": [
+      {
+        "role": "user",
+        "content": "The projector in room 204 is flickering"
+      },
+      {
+        "role": "assistant",
+        "content": "Filed **CMP-1005** (hostel, priority medium) \u2014 status open."
+      }
+    ]
+  },
+  {
+    "utterance": "change the reason on OD-2001 to national-level hackathon",
+    "expected": "amend_record",
+    "trap": "reason change on a leave request"
+  },
+  {
+    "utterance": "cancel my complaint, the fan works now",
+    "expected": "cancel_record",
+    "trap": "withdrawal of own complaint"
+  },
+  {
+    "utterance": "I don't need that OD any more",
+    "expected": "cancel_record",
+    "trap": "withdrawal of own leave, no verb 'cancel'"
+  },
+  {
+    "utterance": "never mind, close CMP-1003",
+    "expected": "cancel_record",
+    "trap": "'close' with a withdrawal cue \u2014 not a staff resolve"
+  },
+  {
+    "utterance": "withdraw all my requests",
+    "expected": "cancel_record",
+    "trap": "applies to all"
+  },
+  {
+    "utterance": "Approve Ravi's OD request",
+    "expected": "staff_action",
+    "trap": "the headline sentence"
+  },
+  {
+    "utterance": "Reject OD-2002",
+    "expected": "staff_action",
+    "trap": "id-only staff verb"
+  },
+  {
+    "utterance": "Mark CMP-1001 resolved, the electrician fixed it",
+    "expected": "staff_action",
+    "trap": "work done -> resolve"
+  },
+  {
+    "utterance": "Approve it as an exception",
+    "expected": "staff_action",
+    "trap": "follow-up granting an exception",
+    "history": [
+      {
+        "role": "user",
+        "content": "Approve OD-2002"
+      },
+      {
+        "role": "assistant",
+        "content": "OD-2002 would take the student from 73.0% to 70.9%, below the 75% requirement. Approving it means granting an attendance exception \u2014 confirm that's intended."
+      }
+    ]
+  },
+  {
+    "utterance": "Approve my own leave please",
+    "expected": "staff_action",
+    "trap": "a student asking \u2014 classify what is ASKED; code refuses"
+  },
+  {
+    "utterance": "I need help",
+    "expected": "clarify",
+    "trap": "genuinely ambiguous"
+  },
+  {
+    "utterance": "it's broken again",
+    "expected": "clarify",
+    "trap": "no object, no context"
+  },
+  {
+    "utterance": "what about mine?",
+    "expected": "clarify",
+    "trap": "dangling reference with no history"
+  },
+  {
+    "utterance": "can you do the thing from before",
+    "expected": "clarify",
+    "trap": "no recoverable referent"
+  },
+  {
+    "utterance": "hi!",
+    "expected": "out_of_scope",
+    "trap": "greeting"
+  },
+  {
+    "utterance": "who are you?",
+    "expected": "out_of_scope",
+    "trap": "about Compass itself"
+  },
+  {
+    "utterance": "write my DBMS assignment",
+    "expected": "out_of_scope",
+    "trap": "academic, but not a campus service"
+  },
+  {
+    "utterance": "what's the cricket score?",
+    "expected": "out_of_scope",
+    "trap": "unrelated"
+  }
+]
