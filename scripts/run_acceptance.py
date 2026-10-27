@@ -12,9 +12,9 @@ contains Founders' Day, so the right answer is FOUR working days. A model
 asked to compute that would very likely say five; here it is only asked
 what it heard.
 
-This calls the model once or twice per row. It needs GITHUB_MODELS_TOKEN
-and/or GEMINI_API_KEY, and it is subject to their free-tier limits — the
-summary prints which provider answered each row.
+This calls the model once or twice per row. It needs GEMINI_API_KEY and is
+subject to the free-tier limits — the summary prints which model answered
+each row (the primary, or the fallback when the primary was rate-limited).
 
     python scripts/run_acceptance.py
     python scripts/run_acceptance.py --only 6,7,8d --verbose
@@ -244,7 +244,7 @@ def main() -> int:
     args = ap.parse_args()
 
     if not llm.providers():
-        print("No model provider configured — set GITHUB_MODELS_TOKEN and/or GEMINI_API_KEY.")
+        print("No model provider configured — set GEMINI_API_KEY in .env.")
         return 2
 
     now = clock.today()

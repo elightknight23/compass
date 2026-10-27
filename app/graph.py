@@ -42,8 +42,6 @@ WeekdayName = Literal[
 HISTORY_TURNS = 6  # sliding window fed to the classifier
 CONFIDENCE_FLOOR = 0.45  # below this, ask instead of guessing
 
-COMPLAINT_CATEGORIES = ("hostel", "lab", "library", "transport")
-
 
 # ---------------------------------------------------------------------------
 # The schema the model must answer in

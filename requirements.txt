@@ -4,7 +4,7 @@ fastapi==0.139.2
 uvicorn[standard]==0.51.0
 pydantic==2.13.4
 python-dotenv==1.2.2
-openai==2.45.0            # OpenAI-compatible client for GitHub Models and Gemini
+openai==2.45.0            # OpenAI-compatible client for Gemini
 httpx==0.28.1             # app/llm.py builds the shared connection pool itself
 
 # Agent stack
@@ -16,3 +16,8 @@ tiktoken==0.13.0          # token counting for structure-aware chunking
 # Records
 SQLAlchemy==2.1.6
 psycopg[binary]==3.3.6
+
+# Uploaded documents
+python-multipart==0.0.32  # FastAPI form/file uploads
+pdfplumber==0.11.10       # PDF text and tables (calendars are mostly tables)
+python-docx==1.2.0        # .docx uploads

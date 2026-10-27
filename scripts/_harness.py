@@ -24,7 +24,6 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-os.environ["GITHUB_MODELS_TOKEN"] = ""
 os.environ["GEMINI_API_KEY"] = ""
 os.environ.setdefault("COMPASS_TODAY", "2026-10-23")  # a Friday
 

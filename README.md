@@ -74,7 +74,7 @@ it's only needed for Postgres, and JSON works with no setup.
 
 ```bash
 python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt
-cp .env.example .env            # add GITHUB_MODELS_TOKEN and/or GEMINI_API_KEY
+cp .env.example .env            # add GEMINI_API_KEY (aistudio.google.com)
 
 .venv/bin/python scripts/index_docs.py          # build the regulations index (downloads MiniLM once, ~80 MB)
 .venv/bin/python scripts/reset_demo.py          # start from the seed
@@ -113,11 +113,13 @@ Published on purpose. These are fictional accounts with no real data behind them
 
 ### The model: free, behind one interface
 
-`app/llm.py` talks to **GitHub Models** (`openai/gpt-4o-mini`) first and
-**Google AI Studio** (`gemini-2.5-flash`) second, both over the OpenAI wire
-format. The fallback is for availability only (rate limits, outages, a
-rejected key), never because an answer looked wrong. The trace records which
-provider answered.
+`app/llm.py` talks to **Google AI Studio's** free tier over its
+OpenAI-compatible endpoint: `gemini-3.5-flash-lite` first, and
+`gemini-3.1-flash-lite` on the same key when the first is rate-limited or
+down (each model has its own free quota). The fallback is for availability
+only (rate limits, outages, a rejected key, a response that isn't a chat
+completion), never because an answer looked wrong. The trace records which
+model answered.
 
 Embeddings are **local**: all-MiniLM-L6-v2 on the ONNX runtime that ChromaDB
 ships. That means no hosted embedder, no rate limit, no network in retrieval,
@@ -157,7 +159,7 @@ app/
   attendance.py    the projection, and nothing else
   clock.py         the one definition of "today"
   auth.py          scrypt hashing, signed sessions, ROLE_CAPABILITIES
-  llm.py           GitHub Models with Gemini fallback, one pooled client
+  llm.py           Gemini primary + fallback model, one pooled client
   warmup.py        pays cold-start cost on a background thread
   models.py        SQLAlchemy schema
   backends/        the swap boundary: postgres_backend, json_backend
@@ -255,8 +257,10 @@ An unnamed limitation is the one that bites during questions.
   category to its own office.
 - **Advisors are not scoped to their own sections.** Any faculty advisor can
   decide any student's leave.
-- **Free-tier model limits.** GitHub Models' daily cap is low, so long eval
-  runs spill onto the Gemini fallback. The reports say so.
+- **Free-tier model limits.** Long eval runs can spill from the primary
+  model onto the fallback; the reports say which model answered. Both models
+  are Google's, so a full Google outage takes chat down (the offline suites
+  are unaffected).
 - **Demo passwords are seeded and published.** There is no rotation or
   lockout, and cookies are not `Secure` (the demo runs on http://localhost).
   Harden before anything real.

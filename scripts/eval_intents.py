@@ -19,9 +19,9 @@ How to report the result, and why:
 - **As a range, not a number.** Temperature 0 is not determinism: in the
   predecessor, two runs four days apart scored differently with no code
   change, on a borderline utterance. Run it more than once; report the spread.
-- **With its provider.** Free tiers fall back between providers, and a
-  score from the fallback model is a different measurement. The report
-  prints which provider answered each call.
+- **With its model.** On a free tier the primary model spills onto the
+  fallback model when rate-limited, and a score from the fallback is a
+  different measurement. The report prints which model answered each call.
 - **With the conflict of interest.** The same person wrote these
   utterances and the prompt they are scored against. A high score measures
   self-consistency, not resilience to strangers.
@@ -135,7 +135,7 @@ def report(results: list[dict], label: str) -> int:
 
 def main() -> int:
     if not llm.providers():
-        print("No model provider configured — set GITHUB_MODELS_TOKEN and/or GEMINI_API_KEY.")
+        print("No model provider configured — set GEMINI_API_KEY in .env.")
         return 2
     ap = argparse.ArgumentParser()
     ap.add_argument("--naive", action="store_true", help="thin prompt only")

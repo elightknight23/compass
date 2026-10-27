@@ -60,7 +60,7 @@ def show(strategy: str, collection: str) -> str:
 
 def main() -> int:
     if not llm.providers():
-        print("No model provider configured — set GITHUB_MODELS_TOKEN and/or GEMINI_API_KEY.")
+        print("No model provider configured — set GEMINI_API_KEY in .env.")
         return 2
     print(f'QUESTION: "{QUESTION}"')
     print(f"GROUND TRUTH: {CORRECT} (od_and_leave_policy.md > Applying for OD > Long-Duration OD)")

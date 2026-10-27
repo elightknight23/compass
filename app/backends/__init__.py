@@ -34,7 +34,6 @@ OD_PREFIX = "OD-"
 
 COMPLAINT = "facility_complaint"
 OD_REQUEST = "od_request"
-RECORD_TYPES = (COMPLAINT, OD_REQUEST)
 
 # Every record carries every key, so a consumer never has to ask which type
 # it holds before reading a field. The type-specific ones are None on the
@@ -195,15 +194,3 @@ def get_backend() -> RecordBackend:
 
         return PostgresBackend()
     raise ValueError(f"Unknown RECORD_BACKEND={choice!r}. Expected postgres or json.")
-
-
-def record_type_for(record_id: str) -> str | None:
-    """The type a record id implies, from its prefix. Used only for wording
-    ("that looks like a leave request id") — never for authorization, which
-    always reads the type off the fetched record."""
-    rid = (record_id or "").strip().upper()
-    if rid.startswith(COMPLAINT_PREFIX):
-        return COMPLAINT
-    if rid.startswith(OD_PREFIX):
-        return OD_REQUEST
-    return None

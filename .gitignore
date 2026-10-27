@@ -26,9 +26,3 @@ web/*.tsbuildinfo
 
 # local tooling config
 .DS_Store
-
-# private working notes from the predecessor project — not part of Compass
-PROJECT_PLAN.md
-context/
-docs/ATLAS_CONTEXT.md
-coursework.md

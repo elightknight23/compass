@@ -36,7 +36,7 @@ REAL_RULE = "75%"
 
 def main() -> int:
     if not llm.providers():
-        print("No model provider configured — set GITHUB_MODELS_TOKEN and/or GEMINI_API_KEY.")
+        print("No model provider configured — set GEMINI_API_KEY in .env.")
         return 2
     print(f"run date: {clock.today().isoformat()}")
     print(f'QUESTION: "{QUESTION}"\n')

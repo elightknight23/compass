@@ -1,11 +1,12 @@
 """The model, behind one interface — and a fallback when the free tier runs out.
 
-Compass must cost nothing to run, so it talks to free hosted models: GitHub
-Models first, Google AI Studio (Gemini) second. Both speak the OpenAI wire
-format, so one SDK serves both and the rest of the code never learns which
-one answered — except the trace, which says so, because "the classifier got
-this wrong" and "the *fallback* classifier got this wrong" are different
-findings.
+Compass must cost nothing to run, so it talks to Google AI Studio's free
+tier over its OpenAI-compatible endpoint: a primary model, then a fallback
+model on the same key. Each model has its own free-tier quota, so a 429 on
+one is usually not a 429 on the other. The rest of the code never learns
+which one answered — except the trace, which says so, because "the
+classifier got this wrong" and "the *fallback* classifier got this wrong"
+are different findings.
 
 Two things are deliberate:
 
@@ -56,25 +57,30 @@ class LLMUnavailable(RuntimeError):
     """Every configured provider failed. The message names each failure."""
 
 
+class ProviderMisbehaved(RuntimeError):
+    """A provider answered 200 with something that is not a chat completion.
+
+    A retired endpoint does exactly this — the first provider this project
+    used now replies a bare text/plain "OK" to every request, which the SDK
+    hands back as a str. That is an availability failure, not a bug in the
+    call.
+    """
+
+
 def providers() -> list[Provider]:
-    """Configured providers, primary first. A provider without a key is
-    simply absent — the chain is whatever this machine can actually reach."""
-    known = {
-        "github": Provider(
-            "github",
-            config.GITHUB_MODELS_BASE_URL,
-            config.GITHUB_MODELS_TOKEN or "",
-            config.GITHUB_MODELS_MODEL,
-        ),
-        "gemini": Provider(
-            "gemini",
-            config.GEMINI_BASE_URL,
-            config.GEMINI_API_KEY or "",
-            config.GEMINI_MODEL,
-        ),
-    }
-    order = [config.LLM_PRIMARY] + [n for n in known if n != config.LLM_PRIMARY]
-    return [known[n] for n in order if n in known and known[n].api_key]
+    """Configured providers, primary first. Without a key the chain is
+    empty; a blank or duplicate fallback model is simply absent. A provider
+    is named by its model id, which is what the trace shows."""
+    if not config.GEMINI_API_KEY:
+        return []
+    models = [config.GEMINI_MODEL]
+    if config.GEMINI_FALLBACK_MODEL and config.GEMINI_FALLBACK_MODEL not in models:
+        models.append(config.GEMINI_FALLBACK_MODEL)
+    return [
+        Provider(m, config.GEMINI_BASE_URL, config.GEMINI_API_KEY, m)
+        for m in models
+        if m
+    ]
 
 
 @lru_cache(maxsize=1)
@@ -126,8 +132,23 @@ def _is_availability_error(e: Exception) -> bool:
             openai.AuthenticationError,
             openai.PermissionDeniedError,
             openai.NotFoundError,  # model id not served by this provider
+            ProviderMisbehaved,
         ),
     )
+
+
+def _completion(p: Provider, call):
+    """Run one SDK call; raise ProviderMisbehaved unless it returned a completion."""
+    try:
+        resp = call()
+    except AttributeError as e:
+        # .parse() post-processes the body itself and trips over a str first.
+        raise ProviderMisbehaved(f"{p.name}: response was not a chat completion ({e})") from e
+    if not hasattr(resp, "choices"):
+        raise ProviderMisbehaved(
+            f"{p.name}: response was not a chat completion ({str(resp)[:40]!r})"
+        )
+    return resp
 
 
 def _log(message: str) -> None:
@@ -139,8 +160,8 @@ def _require_providers() -> list[Provider]:
     chain = providers()
     if not chain:
         raise LLMUnavailable(
-            "No model provider is configured. Set GITHUB_MODELS_TOKEN and/or "
-            "GEMINI_API_KEY in .env (see .env.example)."
+            "No model provider is configured. Set GEMINI_API_KEY in .env "
+            "(see .env.example)."
         )
     return chain
 
@@ -149,12 +170,12 @@ def _parse_with(p: Provider, messages: list[dict], schema: type[T], temperature:
     import openai
 
     try:
-        completion = client(p.name).chat.completions.parse(
+        completion = _completion(p, lambda: client(p.name).chat.completions.parse(
             model=p.model,
             temperature=temperature,
             messages=messages,
             response_format=schema,
-        )
+        ))
         parsed = completion.choices[0].message.parsed
         if parsed is not None:
             return parsed
@@ -167,12 +188,12 @@ def _parse_with(p: Provider, messages: list[dict], schema: type[T], temperature:
         "against this JSON Schema:\n"
         + json.dumps(schema.model_json_schema())
     )
-    completion = client(p.name).chat.completions.create(
+    completion = _completion(p, lambda: client(p.name).chat.completions.create(
         model=p.model,
         temperature=temperature,
         messages=[*messages, {"role": "system", "content": instructions}],
         response_format={"type": "json_object"},
-    )
+    ))
     return schema.model_validate_json(completion.choices[0].message.content or "")
 
 
@@ -209,12 +230,12 @@ def complete(
     failures: list[str] = []
     for p in _require_providers():
         try:
-            resp = client(p.name).chat.completions.create(
+            resp = _completion(p, lambda: client(p.name).chat.completions.create(
                 model=p.model,
                 temperature=temperature,
                 messages=messages,
                 **({"max_tokens": max_tokens} if max_tokens else {}),
-            )
+            ))
             return (resp.choices[0].message.content or "").strip(), p.name
         except Exception as e:  # noqa: BLE001
             if not _is_availability_error(e):

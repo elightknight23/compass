@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session  # noqa: E402
 
 from app import config  # noqa: E402
 from app.backends import RECORD_FIELDS  # noqa: E402
-from app.backends.postgres_backend import make_engine  # noqa: E402
+from app.backends.postgres_backend import init_schema, make_engine  # noqa: E402
 from app.models import Attendance, Base, Record, User  # noqa: E402
 
 
@@ -35,7 +35,7 @@ def seed(url: str, data_dir: Path | None = None) -> dict:
     creds = {v["user_id"]: (k, v["password"]) for k, v in load("credentials.json").items()}
     engine = make_engine(url)
     Base.metadata.drop_all(engine)
-    Base.metadata.create_all(engine)
+    init_schema(engine)
 
     with Session(engine) as db, db.begin():
         for u in people:

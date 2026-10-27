@@ -13,7 +13,7 @@ before anything is allowed to touch a record.** Everything downstream of
 
 ```mermaid
 flowchart TD
-    S([START]) --> CLS["<b>classify</b><br/>GitHub Models → Gemini fallback<br/>structured output · the only deciding LLM call"]
+    S([START]) --> CLS["<b>classify</b><br/>Gemini · primary → fallback model<br/>structured output · the only deciding LLM call"]
 
     subgraph GROUND ["answers from documents"]
         REG["regulation_question"]

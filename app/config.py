@@ -27,23 +27,16 @@ def _flag(name: str, default: bool) -> bool:
 
 
 # -- the model ---------------------------------------------------------------
-# Two free providers behind one interface (see app/llm.py). The primary is
-# tried first; the fallback only answers when the primary is rate-limited,
-# down, or unreachable. Free tiers move constantly, so neither is assumed to
-# be there — a missing key simply removes that provider from the chain.
-LLM_PRIMARY = os.getenv("LLM_PRIMARY", "github").strip().lower()
-
-GITHUB_MODELS_TOKEN = os.getenv("GITHUB_MODELS_TOKEN")
-GITHUB_MODELS_BASE_URL = os.getenv(
-    "GITHUB_MODELS_BASE_URL", "https://models.github.ai/inference"
-)
-GITHUB_MODELS_MODEL = os.getenv("GITHUB_MODELS_MODEL", "openai/gpt-4o-mini")
-
+# Google AI Studio's free tier, over its OpenAI-compatible endpoint (see
+# app/llm.py). Two models on the same key: each has its own free-tier quota,
+# so when the primary is rate-limited or down the fallback answers. A blank
+# fallback means no fallback.
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_BASE_URL = os.getenv(
     "GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/"
 )
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+GEMINI_FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-3.1-flash-lite")
 
 # Read/write timeout, in seconds. Once a connection exists, a slow response
 # is a real fault: these prompts answer in about a second, so 30s is
