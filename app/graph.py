@@ -29,7 +29,7 @@ import time
 from typing import Literal
 
 from langgraph.graph import END, START, StateGraph
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from . import clock, dates, handlers, llm
 from .dates import DateSpec
@@ -46,8 +46,28 @@ CONFIDENCE_FLOOR = 0.45  # below this, ask instead of guessing
 # ---------------------------------------------------------------------------
 # The schema the model must answer in
 # ---------------------------------------------------------------------------
+_NULLISH = {"", "null", "none", "n/a"}
+
+
 class Classification(BaseModel):
     """Structured output contract for one user message."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _blank_means_absent(cls, data):
+        """Models often say "" or "null" for a field they mean to leave out.
+        For an optional field that is absence, and must be None: "" in a
+        Literal field would otherwise fail validation and turn the whole
+        turn into a clarify, and "" in a date field would reach the date
+        parser. Required fields are left alone so a genuinely broken reply
+        still fails loudly."""
+        if not isinstance(data, dict):
+            return data
+        optional = {n for n, f in cls.model_fields.items() if f.default is None}
+        return {
+            k: (None if k in optional and isinstance(v, str) and v.strip().lower() in _NULLISH else v)
+            for k, v in data.items()
+        }
 
     intent: Intent
     confidence: float = Field(description="0.0-1.0 certainty in the intent")

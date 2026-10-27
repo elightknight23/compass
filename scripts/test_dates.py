@@ -212,6 +212,26 @@ def main() -> int:
     report("  and without the holiday it ends Thursday",
            got == (date(2026, 11, 17), date(2026, 11, 19)), f"got {got}")
 
+    # -- what the classifier hands over ------------------------------------
+    # Models often say "" or "null" for a part they mean to leave out. That
+    # must arrive here as None, not as a string the date parser chokes on
+    # or a Literal that fails validation and degrades the turn to clarify.
+    from app.graph import Classification
+
+    c = Classification.model_validate({
+        "intent": "request_od_leave", "confidence": 0.9, "reasoning": "r",
+        "anchor_weekday": "", "explicit_start_date": "null", "leave_kind": "None",
+        "week_offset": None, "reason": "a family function",
+    })
+    report('classifier: "" / "null" / "None" in optional parts become None',
+           (c.anchor_weekday, c.explicit_start_date, c.leave_kind) == (None, None, None))
+    report("classifier: real values are untouched", c.reason == "a family function")
+    try:
+        Classification.model_validate({"intent": "", "confidence": 0.9, "reasoning": "r"})
+        report("classifier: a blank REQUIRED field still fails loudly", False)
+    except ValueError:
+        report("classifier: a blank REQUIRED field still fails loudly", True)
+
     print(f"\n{checks - failures}/{checks} checks passed")
     return 1 if failures else 0
 

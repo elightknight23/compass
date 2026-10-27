@@ -29,6 +29,7 @@ module does the division.
 
 from __future__ import annotations
 
+import math
 from dataclasses import asdict, dataclass
 
 from . import config
@@ -150,10 +151,23 @@ def days_of_margin(
     return k
 
 
-def pct(value: float | None) -> str:
+def pct(value: float | None, threshold: float | None = None) -> str:
     """"76.2%". One decimal place: enough to see a 0.4-point move, few
-    enough that nobody mistakes it for more precision than the data has."""
-    return "—" if value is None else f"{value * 100:.1f}%"
+    enough that nobody mistakes it for more precision than the data has.
+
+    Rounding is never allowed to cross the threshold upward: 74.96% is
+    below 75%, and printing it as "75.0%" next to "below the 75%
+    requirement" contradicts the decision the code just made. Below the
+    threshold the figure is truncated instead, so it reads "74.9%". The
+    decision itself always uses the unrounded value.
+    """
+    if value is None:
+        return "—"
+    thr = config.ATTENDANCE_THRESHOLD if threshold is None else threshold
+    shown = round(value * 100, 1)
+    if value < thr and shown >= thr * 100:
+        shown = math.floor(value * 1000) / 10
+    return f"{shown:.1f}%"
 
 
 def rule_pct(value: float | None) -> str:

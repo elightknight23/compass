@@ -86,6 +86,14 @@ def main() -> int:
     check("pct: one decimal place", attendance.pct(457 / 600) == "76.2%")
     check("pct: None renders as a dash", attendance.pct(None) == "—")
     check("rule_pct: a threshold reads as a round number", attendance.rule_pct(0.75) == "75%")
+    check("pct: just below the line never rounds UP to it (74.96% -> 74.9%, not 75.0%)",
+          attendance.pct(0.7496) == "74.9%", attendance.pct(0.7496))
+    check("pct: exactly on the line reads 75.0%", attendance.pct(0.75) == "75.0%")
+    check("pct: away from the line, ordinary rounding (0.7494 -> 74.9%, 0.7616 -> 76.2%)",
+          attendance.pct(0.7494) == "74.9%" and attendance.pct(0.76166) == "76.2%")
+    check("pct: what is displayed never contradicts below_threshold",
+          all((attendance.pct(v) < "75.0%") == (v < 0.75)
+              for v in (0.7449, 0.7495, 0.74999, 0.75, 0.75001, 0.7551)))
 
     section("days of margin")
     check("Ravi (457/600) can miss exactly one more day",
