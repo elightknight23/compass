@@ -749,13 +749,18 @@ def handle_request_od_leave(state: AgentState) -> dict:
             outcome="past_dates",
         )
 
-    working = dates.working_days(start, end)
-    skipped = dates.holidays_between(start, end)
+    # The student's own year: a holiday some years get and others don't
+    # (a first-year-only break) must count for exactly the right people.
+    year = user.get("year")
+    hols = dates.college_holidays(year)
+    working = dates.working_days(start, end, hols)
+    skipped = dates.holidays_between(start, end, hols)
     trace = {
         "span": f"{start.isoformat()} .. {end.isoformat()}",
         "working_days": working,
+        "holiday_calendar": dates.holiday_source(),
         **(
-            {"holidays_skipped": [f"{d.isoformat()} {dates.holiday_name(d) or ''}".strip()
+            {"holidays_skipped": [f"{d.isoformat()} {dates.holiday_name(d, year) or ''}".strip()
                                   for d in skipped]}
             if skipped else {}
         ),
@@ -814,7 +819,7 @@ def handle_request_od_leave(state: AgentState) -> dict:
 
     holiday_note = (
         " (" + ", ".join(
-            f"{dates.holiday_name(d) or 'a holiday'} on {_day(d)}" for d in skipped
+            f"{dates.holiday_name(d, year) or 'a holiday'} on {_day(d)}" for d in skipped
         ) + " isn't counted)"
         if skipped else ""
     )

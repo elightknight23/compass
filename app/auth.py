@@ -205,3 +205,16 @@ def is_staff(user: dict | None) -> bool:
     as every drawer in the room being yours.
     """
     return bool(capabilities(user))
+
+
+# Who may add, remove and confirm the College's documents — the calendar,
+# syllabi, regulations. Kept apart from ROLE_CAPABILITIES on purpose: those
+# are record types a person may decide, and a document is not a record
+# anyone decides. The advisor owns academic documents; the warden, though
+# staff, does not, and no student ever does — an upload is read by every
+# student's assistant, so it is a write into everyone's answers.
+DOCUMENT_MANAGERS: frozenset[str] = frozenset({"faculty_advisor"})
+
+
+def may_manage_documents(user: dict | None) -> bool:
+    return (user or {}).get("role") in DOCUMENT_MANAGERS

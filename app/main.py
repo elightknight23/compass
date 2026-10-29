@@ -23,14 +23,18 @@ from __future__ import annotations
 import json
 import time
 from contextlib import asynccontextmanager
+from datetime import date
 from pathlib import Path
 
-from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
+from fastapi import (
+    BackgroundTasks, Cookie, Depends, FastAPI, File, Form, HTTPException, Request, Response,
+    UploadFile,
+)
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import attendance, auth, backends, handlers, rag, users, warmup
+from . import attendance, auth, backends, clock, config, handlers, library, rag, users, warmup
 from .graph import HISTORY_TURNS, graph
 from .state import new_state
 
@@ -42,6 +46,9 @@ async def lifespan(_: FastAPI):
     # Cold start (model connection, ONNX weights, vector segments) is paid on
     # a daemon thread, so the port binds immediately and the cost lands
     # while the demo is still being set up. See app/warmup.py.
+    # An upload interrupted by the last shutdown would otherwise sit in
+    # "processing" forever, undeletable.
+    library.recover_interrupted()
     warmup.warm_in_background()
     yield
 
@@ -52,7 +59,8 @@ app = FastAPI(title="Compass", lifespan=lifespan)
 # precisely so this can stay a pass-through — but listing fields explicitly
 # means a future one is opt-in, not opt-out.
 PUBLIC_USER_FIELDS = (
-    "id", "username", "name", "role", "department", "year", "section", "residence",
+    "id", "username", "name", "role", "department", "branch", "year", "semester",
+    "section", "residence",
 )
 
 
@@ -382,9 +390,136 @@ def record_action(record_id: str, req: ActionRequest, user: dict = Depends(requi
     }
 
 
+# ---------------------------------------------------------------------------
+# Documents — the College's calendar, syllabi and regulations
+# ---------------------------------------------------------------------------
+# library.py re-checks the caller on every mutation (I1); these only shape
+# HTTP. The same outcome vocabulary as records: "you may not" is 403, "no
+# such document" 404, "already uploaded" / "still processing" 409.
+DOCUMENT_OUTCOME_STATUS = {
+    "not_authorized": 403,
+    "not_found": 404,
+    "invalid": 400,
+    "empty": 400,
+    "not_a_calendar": 400,
+    "unsupported_type": 415,
+    "too_large": 413,
+    "duplicate": 409,
+    "still_processing": 409,
+    "unavailable": 502,
+}
+
+
+def _library(res: dict, ok_status: int = 200):
+    if res["success"]:
+        return JSONResponse(status_code=ok_status, content={"outcome": res["outcome"], "data": res["data"]})
+    return JSONResponse(
+        status_code=DOCUMENT_OUTCOME_STATUS.get(res["outcome"], 400),
+        content={"detail": res["error"], "outcome": res["outcome"],
+                 **({"document": res["document"]} if res.get("document") else {})},
+    )
+
+
+@app.post("/api/documents")
+async def upload_document(
+    background: BackgroundTasks,
+    file: UploadFile = File(...),
+    doc_type: str = Form(...),
+    title: str = Form(""),
+    branch: str = Form("ALL"),
+    semester: str = Form(""),
+    academic_year: str = Form(""),
+    user: dict = Depends(require_user),
+):
+    """Upload one document. 202: it is registered and stored, and is
+    extracted and indexed in the background — poll GET /api/documents/{id}.
+
+    Read in full before anything is checked, but capped one byte past the
+    limit, so an oversized upload is refused without holding all of it.
+    """
+    data = await file.read(config.MAX_UPLOAD_MB * 1024 * 1024 + 1)
+    res = library.upload(
+        user, file.filename or "upload", data, title=title, doc_type=doc_type,
+        branch=branch, semester=semester or None, academic_year=academic_year or None,
+    )
+    if res["success"]:
+        background.add_task(library.ingest, res["data"]["id"])
+    return _library(res, ok_status=202)
+
+
+@app.get("/api/documents")
+def list_documents(user: dict = Depends(require_user)):
+    res = library.list_documents(user)
+    if not res["success"]:
+        return _library(res)
+    return {"documents": res["data"], "may_manage": auth.may_manage_documents(user)}
+
+
+@app.get("/api/documents/{document_id}")
+def get_document(document_id: str, user: dict = Depends(require_user)):
+    return _library(library.get_document(user, document_id))
+
+
+@app.get("/api/documents/{document_id}/file")
+def document_file(document_id: str, user: dict = Depends(require_user)):
+    """The original upload, so a citation can be opened and checked."""
+    res = library.get_document(user, document_id)
+    if not res["success"]:
+        return _library(res)
+    doc = res["data"]
+    path = library.original_path(doc)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="The stored file is missing; re-upload it.")
+    return FileResponse(path, media_type=doc["content_type"] or "application/octet-stream",
+                        filename=doc["filename"], content_disposition_type="inline")
+
+
+@app.delete("/api/documents/{document_id}")
+def delete_document(document_id: str, user: dict = Depends(require_user)):
+    return _library(library.delete(user, document_id))
+
+
+@app.get("/api/documents/{document_id}/events")
+def calendar_draft(document_id: str, user: dict = Depends(require_user)):
+    return _library(library.calendar_draft(user, document_id))
+
+
+class CalendarReview(BaseModel):
+    events: list[dict]
+
+
+@app.put("/api/documents/{document_id}/events")
+def confirm_calendar(document_id: str, req: CalendarReview, user: dict = Depends(require_user)):
+    return _library(library.confirm_calendar(user, document_id, req.events))
+
+
+@app.get("/api/calendar")
+def calendar(start: str | None = None, end: str | None = None, user: dict = Depends(require_user)):
+    """Confirmed events for the caller's year of study, between two dates
+    (default: today onwards). `source` says whether they come from the
+    College's confirmed calendar or the placeholder file."""
+    try:
+        lo = date.fromisoformat(start) if start else clock.today()
+        hi = date.fromisoformat(end) if end else None
+    except ValueError:
+        raise HTTPException(status_code=400, detail="start and end are YYYY-MM-DD.") from None
+    res = library.events_in_force(user.get("year"))
+    if not res["success"]:
+        return _library(res)
+    rows = [
+        e for e in res["data"]["events"]
+        if e["start_date"] and (e["end_date"] or e["start_date"]) >= lo.isoformat()
+        and (hi is None or e["start_date"] <= hi.isoformat())
+    ]
+    return {"source": res["data"]["source"], "events": rows}
+
+
 @app.post("/api/admin/reindex")
-def reindex(user: dict = Depends(require_staff)):
-    """Rebuild the regulations index from docs/regulations/. Staff only."""
+def reindex(user: dict = Depends(require_user)):
+    """Rebuild the whole index: the regulations in docs/regulations/ and
+    every indexed upload. Document managers only — same rule as uploading."""
+    if not auth.may_manage_documents(user):
+        raise HTTPException(status_code=403, detail="Only the faculty advisor can rebuild the index.")
     try:
         result = rag.build_index()
     except FileNotFoundError as e:

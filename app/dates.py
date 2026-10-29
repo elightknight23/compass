@@ -16,16 +16,26 @@ becomes ordinary Python that a unit test can pin down.
 That is the same boundary the handlers already draw for authorization:
 the model decides what is being asked, code decides the rest.
 
-**Working days skip the college's holidays**, not just weekends. The
-calendar is `data/holidays.json`; a college has far more holidays than an
-office, and counting Pongal as a working day would put a wrong number into
-every attendance projection that spans it. Every function that counts takes
-an explicit `holidays` set so tests can pin it, and defaults to the file.
+**Working days skip the college's holidays**, not just weekends. A college
+has far more holidays than an office, and counting Pongal as a working day
+would put a wrong number into every attendance projection that spans it.
+Every function that counts takes an explicit `holidays` set so tests can
+pin it, and defaults to `college_holidays()`.
+
+Where the holidays come from, in order:
+
+1. **Confirmed holidays from an uploaded academic calendar.** Parsed out of
+   the document by app/documents.py — by regex, never by the model — and
+   confirmed row by row by the advisor. A holiday may apply to some years
+   only (a first-year-only break), so the set is asked for per year.
+2. **`data/holidays.json`**, the placeholder seed, when no calendar has
+   been confirmed. Replies say which of the two they used.
 """
 
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import dataclass
 from datetime import date, timedelta
 from functools import lru_cache
@@ -91,30 +101,110 @@ def _parse(iso: str | None) -> date | None:
 
 
 @lru_cache(maxsize=1)
-def college_holidays() -> frozenset[date]:
-    """The holiday calendar, read once. A missing or unreadable file means
-    "no holidays known" — weekends still count — rather than a crash."""
+def _holiday_table() -> tuple[str, tuple[tuple[date, str, frozenset[int] | None], ...]]:
+    """(source, ((day, name, years or None for all), ...)), cached.
+
+    Cleared by refresh_holidays() whenever a calendar is confirmed or
+    deleted. A store that cannot be read falls back to the seed file —
+    and says so on stderr — rather than counting every day as working.
+    """
+    from . import backends
+
+    res = backends.get_backend().list_calendar_events(confirmed_only=True)
+    if not res["success"]:
+        print(f"[compass-dates] calendar unavailable ({res['error']}); using data/holidays.json",
+              file=sys.stderr)
+    confirmed = (res["data"] or []) if res["success"] else []
+    rows = []
+    for e in confirmed:
+        if e.get("kind") != "holiday" or not e.get("include", True):
+            continue
+        start, end = _parse(e.get("start_date")), _parse(e.get("end_date") or e.get("start_date"))
+        if start is None or end is None or end < start or (end - start).days > 120:
+            continue
+        years = _years(e.get("years"))
+        d = start
+        while d <= end:
+            rows.append((d, e.get("title") or "Holiday", years))
+            d += timedelta(days=1)
+    # Any confirmed calendar replaces the seed outright — even one with no
+    # holidays in it. Mixing the placeholder file into a real calendar
+    # would invent days off the college never announced.
+    if confirmed:
+        return "calendar", tuple(rows)
+
     try:
         raw = json.loads((config.DATA_DIR / "holidays.json").read_text())
     except (OSError, ValueError):
-        return frozenset()
-    out = set()
+        return "none", ()
+    seed = []
     for entry in raw:
         try:
-            out.add(date.fromisoformat(entry["date"]))
+            seed.append((date.fromisoformat(entry["date"]), entry.get("name") or "Holiday", None))
         except (KeyError, TypeError, ValueError):
             continue  # one malformed row should not discard the calendar
-    return frozenset(out)
+    return "seed", tuple(seed)
 
 
-def holiday_name(d: date) -> str | None:
-    """"Pongal" for 2027-01-15, or None. For sentences, not arithmetic."""
+def _years(value) -> frozenset[int] | None:
+    """"all" / None -> None (every year); "1,2" -> {1, 2}."""
+    if value in (None, "", "all"):
+        return None
+    try:
+        got = frozenset(int(x) for x in str(value).split(",") if x.strip())
+    except ValueError:
+        return None
+    return got or None
+
+
+def event_applies(event: dict, year: int | None) -> bool:
+    """Whether a calendar event's `years` ("all", "1,2") covers this year."""
+    return _applies(_years(event.get("years")), year)
+
+
+def seed_holidays() -> list[dict]:
+    """The placeholder file's holidays, shaped like calendar events."""
     try:
         raw = json.loads((config.DATA_DIR / "holidays.json").read_text())
     except (OSError, ValueError):
-        return None
-    iso = d.isoformat()
-    return next((e.get("name") for e in raw if e.get("date") == iso), None)
+        return []
+    out = []
+    for entry in raw:
+        if _parse(entry.get("date")) is None:
+            continue
+        out.append({"id": None, "document_id": None, "start_date": entry["date"],
+                    "end_date": entry["date"], "title": entry.get("name") or "Holiday",
+                    "kind": "holiday", "years": "all", "include": True, "confirmed": True})
+    return out
+
+
+def _applies(years: frozenset[int] | None, year: int | None) -> bool:
+    # A holiday for some years only never counts for an unknown year:
+    # treating a first-year break as everyone's would shorten every
+    # projection that crosses it.
+    return years is None or (year is not None and year in years)
+
+
+def college_holidays(year: int | None = None) -> frozenset[date]:
+    """Every holiday that applies to a student in `year` (or, for None, to
+    every year). Weekends are handled separately by is_working_day."""
+    _, rows = _holiday_table()
+    return frozenset(d for d, _, ys in rows if _applies(ys, year))
+
+
+def holiday_source() -> str:
+    """'calendar' (an uploaded, confirmed calendar), 'seed' or 'none'."""
+    return _holiday_table()[0]
+
+
+def refresh_holidays() -> None:
+    _holiday_table.cache_clear()
+
+
+def holiday_name(d: date, year: int | None = None) -> str | None:
+    """"Pongal" for 2027-01-15, or None. For sentences, not arithmetic."""
+    _, rows = _holiday_table()
+    return next((name for day, name, ys in rows if day == d and _applies(ys, year)), None)
 
 
 def is_working_day(d: date, holidays: frozenset[date] | None = None) -> bool:

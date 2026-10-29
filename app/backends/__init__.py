@@ -56,6 +56,46 @@ MUTABLE_FIELDS = frozenset(
     {"status", "category", "priority", "notes", "reason", "decided_by", "decided_at"}
 )
 
+# -- uploaded documents and the calendar parsed out of them ------------------
+DOCUMENT_PREFIX = "DOC-"
+DOCUMENT_START = 3001
+
+DOC_TYPES = ("regulation", "academic_calendar", "syllabus", "other")
+# processing -> indexed | needs_review | failed. needs_review is a calendar
+# whose events were parsed but not yet confirmed by a person; it is already
+# searchable, but none of its dates reach the working-day arithmetic.
+DOC_STATUSES = ("processing", "indexed", "needs_review", "failed")
+
+DOCUMENT_FIELDS = (
+    "id", "title", "filename", "content_type", "sha256", "size", "pages",
+    "doc_type", "branch", "semester", "academic_year",
+    "status", "error", "chunks", "uploaded_by", "uploaded_at",
+)
+# What identifies the document and decides its metadata filters is fixed at
+# upload: changing a branch means different chunk metadata, which means a
+# new upload. Only the processing outcome moves.
+DOCUMENT_MUTABLE_FIELDS = frozenset({"status", "error", "chunks", "pages"})
+
+EVENT_KINDS = ("holiday", "exam", "semester_start", "semester_end", "other")
+CALENDAR_EVENT_FIELDS = (
+    "id", "document_id", "start_date", "end_date", "title", "kind",
+    # "all", or a comma-separated list of the years it applies to: "1" or "2,3"
+    "years",
+    "source_text", "page", "flags",
+    # include: kept by the reviewer; confirmed: reviewed and in force. Only
+    # confirmed holidays change what counts as a working day.
+    "include", "confirmed",
+)
+
+
+def blank_document(**fields: Any) -> dict:
+    return {k: fields.get(k) for k in DOCUMENT_FIELDS}
+
+
+def blank_event(**fields: Any) -> dict:
+    return {k: fields.get(k) for k in CALENDAR_EVENT_FIELDS}
+
+
 # Failure kinds. "the record doesn't exist" and "the system is down" are
 # different sentences to the user, so the envelope keeps them apart.
 NOT_FOUND = "not_found"
@@ -168,6 +208,39 @@ class RecordBackend(Protocol):
 
     def get_attendance(self, user_id: str) -> dict:
         """ok({"attended", "held", "as_of"}) or ok(None) if none is on file."""
+        ...
+
+    # -- uploaded documents ------------------------------------------------
+    def create_document(self, **fields: Any) -> dict:
+        """Register an upload. Allocates a DOC- id. ok(document)."""
+        ...
+
+    def get_document(self, document_id: str) -> dict:
+        """ok(document), or ok(None) for no such document (as get_record)."""
+        ...
+
+    def update_document(self, document_id: str, **fields: Any) -> dict:
+        """Patch DOCUMENT_MUTABLE_FIELDS. ok(updated) or fail(...)."""
+        ...
+
+    def list_documents(self) -> dict:
+        """Every registered document, newest first. ok(list)."""
+        ...
+
+    def delete_document(self, document_id: str) -> dict:
+        """Remove a document AND its calendar events. ok(deleted document),
+        or fail(..., NOT_FOUND)."""
+        ...
+
+    # -- the calendar ------------------------------------------------------
+    def replace_calendar_events(self, document_id: str, events: list[dict]) -> dict:
+        """Replace every event parsed from one document. ok(stored events)."""
+        ...
+
+    def list_calendar_events(
+        self, confirmed_only: bool = True, document_id: str | None = None
+    ) -> dict:
+        """Events by start date. Confirmed ones only unless asked. ok(list)."""
         ...
 
 

@@ -338,7 +338,10 @@ def classify(state: AgentState) -> dict:
         end_weekday=result.end_weekday,
         duration_weekdays=result.duration_weekdays,
     )
-    resolved = None if spec.is_empty() else dates.resolve(spec)
+    # "three days starting Tuesday" counts working days, so it needs the
+    # asker's holidays: a student's year decides which ones apply.
+    year = (state["user"] or {}).get("year")
+    resolved = None if spec.is_empty() else dates.resolve(spec, holidays=dates.college_holidays(year))
 
     entities = {
         k: v

@@ -24,16 +24,35 @@ from sqlalchemy.orm import Session  # noqa: E402
 from app import config  # noqa: E402
 from app.backends import RECORD_FIELDS  # noqa: E402
 from app.backends.postgres_backend import init_schema, make_engine  # noqa: E402
-from app.models import Attendance, Base, Record, User  # noqa: E402
+from app.models import Attendance, Base, CalendarEvent, Document, Record, User  # noqa: E402
 
 
-def seed(url: str, data_dir: Path | None = None) -> dict:
+def _rows(engine, model) -> list[dict]:
+    from sqlalchemy import inspect, select
+
+    if not inspect(engine).has_table(model.__tablename__):
+        return []
+    cols = [c.key for c in model.__table__.columns]
+    with Session(engine) as db:
+        return [{k: getattr(r, k) for k in cols} for r in db.scalars(select(model)).all()]
+
+
+def seed(url: str, data_dir: Path | None = None, keep_documents: bool = False) -> dict:
+    """Drop and recreate every table from the JSON seeds.
+
+    keep_documents carries uploaded documents and their reviewed calendar
+    across the reset (scripts/reset_demo.py does, by default): resetting
+    the demo's records should not make the advisor re-upload and re-review
+    the College's calendar.
+    """
     data = data_dir or config.DATA_DIR
     load = lambda name: json.loads((data / name).read_text())  # noqa: E731
 
     people = load("users.json")
     creds = {v["user_id"]: (k, v["password"]) for k, v in load("credentials.json").items()}
     engine = make_engine(url)
+    kept_docs = _rows(engine, Document) if keep_documents else []
+    kept_events = _rows(engine, CalendarEvent) if keep_documents else []
     Base.metadata.drop_all(engine)
     init_schema(engine)
 
@@ -43,7 +62,8 @@ def seed(url: str, data_dir: Path | None = None) -> dict:
             db.add(User(
                 id=u["id"], username=username, password_hash=password_hash,
                 name=u["name"], role=u["role"], department=u.get("department"),
-                year=u.get("year"), section=u.get("section"),
+                branch=u.get("branch"), year=u.get("year"), semester=u.get("semester"),
+                section=u.get("section"),
                 residence=u.get("residence"), context=u.get("context"),
             ))
         db.flush()  # users must exist before rows that reference them
@@ -51,9 +71,15 @@ def seed(url: str, data_dir: Path | None = None) -> dict:
             db.add(Attendance(**a))
         for r in load("records.json.seed"):
             db.add(Record(**{k: r.get(k) for k in RECORD_FIELDS}))
+        for d in kept_docs:
+            db.add(Document(**d))
+        db.flush()
+        for e in kept_events:
+            db.add(CalendarEvent(**e))
 
     engine.dispose()
-    return {"users": len(people), "records": len(load("records.json.seed"))}
+    return {"users": len(people), "records": len(load("records.json.seed")),
+            "documents": len(kept_docs)}
 
 
 def main() -> int:
@@ -67,7 +93,7 @@ def main() -> int:
         print("is the database up?  docker compose up -d")
         return 1
     where = args.url.split("@")[-1]
-    print(f"seeded {where}: {counts['users']} users, {counts['records']} records, events cleared")
+    print(f"seeded {where}: {counts['users']} users, {counts['records']} records; events and uploaded documents cleared")
     return 0
 
 

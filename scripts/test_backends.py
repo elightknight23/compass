@@ -128,6 +128,86 @@ def protocol(kind: str) -> None:
     att = b.get_attendance("U001")["data"]
     check(f"{tag} get_attendance", att == {"attended": 457, "held": 600, "as_of": "2026-10-21"})
     check(f"{tag} no attendance on file is ok(None)", b.get_attendance("U101")["data"] is None)
+    ravi = next(u for u in people if u["id"] == "U001")
+    check(f"{tag} the directory carries branch and semester (they filter the syllabus)",
+          (ravi.get("branch"), ravi.get("semester")) == ("CSE", 5), str(ravi)[:120])
+
+    # -- uploaded documents and their calendar ----------------------------
+    check(f"{tag} no documents to begin with", b.list_documents()["data"] == [])
+    doc = dict(title="Academic Calendar 2026-27", filename="cal.pdf", content_type="application/pdf",
+               sha256="ab" * 32, size=1234, pages=None, doc_type="academic_calendar", branch="ALL",
+               semester=None, academic_year="2026-27", status="processing", error=None, chunks=None,
+               uploaded_by="U102", uploaded_at="2026-10-23T10:00:00+00:00")
+    d1 = b.create_document(**doc)["data"]
+    d2 = b.create_document(**{**doc, "title": "CSE Syllabus", "sha256": "cd" * 32,
+                              "doc_type": "syllabus", "branch": "CSE",
+                              "uploaded_at": "2026-10-23T11:00:00+00:00"})["data"]
+    check(f"{tag} create_document allocates DOC- ids in order",
+          (d1["id"], d2["id"]) == ("DOC-3001", "DOC-3002"), f"{d1['id']} {d2['id']}")
+    check(f"{tag} get_document is case-insensitive and full",
+          b.get_document("doc-3001")["data"]["title"] == "Academic Calendar 2026-27")
+    r = b.get_document("DOC-9999")
+    check(f"{tag} a missing document is ok(None) (I6)", r["success"] and r["data"] is None)
+    check(f"{tag} list_documents is newest first",
+          [d["id"] for d in b.list_documents()["data"]] == ["DOC-3002", "DOC-3001"])
+    r = b.update_document("DOC-3001", status="needs_review", chunks=12, pages=2)
+    check(f"{tag} update_document moves the processing outcome",
+          r["success"] and b.get_document("DOC-3001")["data"]["chunks"] == 12)
+    r = b.update_document("DOC-3001", branch="ECE")
+    check(f"{tag} a document's branch is immutable (it is baked into the index)",
+          not r["success"] and r["kind"] == "invalid")
+    check(f"{tag} updating a missing document is not_found",
+          b.update_document("DOC-9999", status="indexed")["kind"] == "not_found")
+
+    events = [
+        dict(start_date="2026-11-18", end_date="2026-11-18", title="Founders' Day", kind="holiday",
+             years="all", source_text="18.11.2026 Wednesday Founders' Day", page=1, flags=[],
+             include=True, confirmed=False),
+        dict(start_date="2026-11-09", end_date="2026-11-11", title="Deepavali", kind="holiday",
+             years="all", source_text="09.11.2026 to 11.11.2026 Deepavali", page=1,
+             flags=["inferred_year"], include=True, confirmed=False),
+    ]
+    stored = b.replace_calendar_events("DOC-3001", events)["data"]
+    check(f"{tag} replace_calendar_events stores them with ids and the document",
+          len(stored) == 2 and all(e["id"] and e["document_id"] == "DOC-3001" for e in stored))
+    check(f"{tag} unconfirmed events are not 'in force'",
+          b.list_calendar_events()["data"] == [])
+    drafts = b.list_calendar_events(confirmed_only=False, document_id="DOC-3001")["data"]
+    check(f"{tag} drafts come back ordered by date, flags intact",
+          [e["title"] for e in drafts] == ["Deepavali", "Founders' Day"]
+          and drafts[0]["flags"] == ["inferred_year"])
+    b.replace_calendar_events("DOC-3001", events + [dict(events[0], start_date=None, end_date=None,
+                                                          title="Pongal (TBA)")])
+    drafts = b.list_calendar_events(confirmed_only=False)["data"]
+    check(f"{tag} an undated row sorts last", drafts[-1]["title"] == "Pongal (TBA)", str([e["title"] for e in drafts]))
+    b.replace_calendar_events("DOC-3001", [{**e, "confirmed": True} for e in events[:1]])
+    live = b.list_calendar_events()["data"]
+    check(f"{tag} replacing is a replace, not an append; confirmed ones are in force",
+          [e["title"] for e in live] == ["Founders' Day"]
+          and len(b.list_calendar_events(confirmed_only=False)["data"]) == 1)
+
+    gone = b.delete_document("DOC-3001")
+    check(f"{tag} delete_document returns what it removed",
+          gone["success"] and gone["data"]["id"] == "DOC-3001")
+    check(f"{tag}   and its calendar events went with it",
+          b.list_calendar_events(confirmed_only=False)["data"] == [])
+    check(f"{tag}   leaving the other document alone",
+          [d["id"] for d in b.list_documents()["data"]] == ["DOC-3002"])
+    check(f"{tag} deleting a missing document is not_found",
+          b.delete_document("DOC-3001")["kind"] == "not_found")
+
+    if kind != "json":
+        # The demo reset re-seeds Postgres; the College's documents survive it.
+        from seed_db import seed
+
+        b.replace_calendar_events("DOC-3002", [dict(events[0], confirmed=True)])
+        seed(b.url, b._sandbox_dir, keep_documents=True)
+        check(f"{tag} a records reset keeps documents and their reviewed calendar",
+              [d["id"] for d in b.list_documents()["data"]] == ["DOC-3002"]
+              and len(b.list_calendar_events()["data"]) == 1
+              and b.get_record("CMP-1004")["data"] is None)
+        seed(b.url, b._sandbox_dir)
+        check(f"{tag} a fresh seed does not", b.list_documents()["data"] == [])
 
 
 def main() -> int:

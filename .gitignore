@@ -13,6 +13,9 @@ data/chroma/
 # live demo state — drifts every run; records.json.seed is the committed truth
 data/records.json
 data/events.json
+data/documents.json
+data/calendar.json
+data/uploads/
 data/records.json.*bak
 data/events.json.*bak
 

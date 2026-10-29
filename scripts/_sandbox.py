@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from app import backends, users  # noqa: E402
+from app import backends, config, dates, users  # noqa: E402
 from app.backends.json_backend import JsonBackend  # noqa: E402
 
 SEED_FILES = ("users.json", "credentials.json", "attendance.json", "holidays.json")
@@ -59,6 +59,7 @@ def sandbox(kind: str = "json", records: list[dict] | None = None):
         url = f"sqlite:///{tmp / 'compass.db'}" if kind == "sql" else kind
         seed(url, tmp)
         backend = PostgresBackend(url)
+        backend._sandbox_dir = tmp  # where its seed files are, for re-seeding in tests
         if kind == "sql":
             backend.name = "sql(sqlite)"
 
@@ -66,4 +67,8 @@ def sandbox(kind: str = "json", records: list[dict] | None = None):
     # time, so replacing the module attribute redirects every one of them.
     backends.get_backend = lambda: backend
     users.reload()
+    # Uploads land in the same throwaway directory, and the holiday cache
+    # is rebuilt from this store rather than whatever the last suite left.
+    config.UPLOADS_DIR = tmp / "uploads"
+    dates.refresh_holidays()
     return backend

@@ -8,6 +8,8 @@ The zero-setup backend, and the fallback when Postgres is unreachable.
     data/users.json        the directory — served to browsers, so no secrets
     data/credentials.json  username -> scrypt hash, kept apart for that reason
     data/attendance.json   per-student attended/held periods
+    data/documents.json    uploaded documents (live; starts empty)
+    data/calendar.json     events parsed from uploaded calendars (live)
 
 Writes are read-modify-rewrite of the whole file, which is fine at this
 size and honest about what it is. The one concession to safety is that the
@@ -33,12 +35,17 @@ from .. import clock, config
 from . import (
     COMPLAINT,
     COMPLAINT_PREFIX,
+    DOCUMENT_MUTABLE_FIELDS,
+    DOCUMENT_PREFIX,
+    DOCUMENT_START,
     INVALID,
     MUTABLE_FIELDS,
     NOT_FOUND,
     OD_PREFIX,
     OD_REQUEST,
     UNAVAILABLE,
+    blank_document,
+    blank_event,
     blank_record,
     fail,
     ok,
@@ -54,6 +61,8 @@ class JsonBackend:
         self.dir = data_dir or config.DATA_DIR
         self.records_path = self.dir / "records.json"
         self.events_path = self.dir / "events.json"
+        self.documents_path = self.dir / "documents.json"
+        self.calendar_path = self.dir / "calendar.json"
 
     # -- file I/O ----------------------------------------------------------
     def _load(self, path: Path, default: Any = None) -> Any:
@@ -261,3 +270,101 @@ class JsonBackend:
             {"attended": row["attended"], "held": row["held"], "as_of": row.get("as_of")},
             backend=self.name,
         )
+
+    # -- uploaded documents ------------------------------------------------
+    def _documents(self) -> list[dict]:
+        return [blank_document(**d) for d in self._load(self.documents_path, default=[])]
+
+    def create_document(self, **fields: Any) -> dict:
+        try:
+            docs = self._documents()
+            doc = blank_document(**fields)
+            doc["id"] = self._next_id(docs, DOCUMENT_PREFIX, DOCUMENT_START)
+            docs.append(doc)
+            self._save(self.documents_path, docs)
+        except (OSError, ValueError) as e:
+            return fail(f"Could not write to the documents file: {e}", UNAVAILABLE)
+        return ok(doc, backend=self.name)
+
+    def get_document(self, document_id: str) -> dict:
+        try:
+            docs = self._documents()
+        except (OSError, ValueError) as e:
+            return fail(f"Could not read the documents file: {e}", UNAVAILABLE)
+        wanted = (document_id or "").strip().upper()
+        return ok(next((d for d in docs if d["id"].upper() == wanted), None), backend=self.name)
+
+    def update_document(self, document_id: str, **fields: Any) -> dict:
+        unknown = set(fields) - DOCUMENT_MUTABLE_FIELDS
+        if unknown:
+            return fail(f"Fields not updatable: {', '.join(sorted(unknown))}.", INVALID)
+        try:
+            docs = self._documents()
+            wanted = (document_id or "").strip().upper()
+            match = next((d for d in docs if d["id"].upper() == wanted), None)
+            if match is None:
+                return fail(f"No document {document_id} exists.", NOT_FOUND)
+            match.update(fields)
+            self._save(self.documents_path, docs)
+        except (OSError, ValueError) as e:
+            return fail(f"Could not write to the documents file: {e}", UNAVAILABLE)
+        return ok(match, backend=self.name)
+
+    def list_documents(self) -> dict:
+        try:
+            docs = self._documents()
+        except (OSError, ValueError) as e:
+            return fail(f"Could not read the documents file: {e}", UNAVAILABLE)
+        docs.sort(key=lambda d: (d.get("uploaded_at") or "", d["id"]), reverse=True)
+        return ok(docs, backend=self.name)
+
+    def delete_document(self, document_id: str) -> dict:
+        try:
+            docs = self._documents()
+            wanted = (document_id or "").strip().upper()
+            match = next((d for d in docs if d["id"].upper() == wanted), None)
+            if match is None:
+                return fail(f"No document {document_id} exists.", NOT_FOUND)
+            # Events first: a crash between the two writes leaves a document
+            # without events (re-uploadable), never events without a document.
+            events = self._load(self.calendar_path, default=[])
+            self._save(self.calendar_path,
+                       [e for e in events if str(e["document_id"]).upper() != wanted])
+            self._save(self.documents_path, [d for d in docs if d is not match])
+        except (OSError, ValueError) as e:
+            return fail(f"Could not write to the documents file: {e}", UNAVAILABLE)
+        return ok(match, backend=self.name)
+
+    # -- the calendar ------------------------------------------------------
+    def replace_calendar_events(self, document_id: str, events: list[dict]) -> dict:
+        try:
+            current = self._load(self.calendar_path, default=[])
+            wanted = (document_id or "").strip().upper()
+            kept = [e for e in current if str(e["document_id"]).upper() != wanted]
+            next_id = max((int(e["id"]) for e in current), default=0) + 1
+            stored = []
+            for i, e in enumerate(events):
+                row = blank_event(**e)
+                row["id"] = next_id + i
+                row["document_id"] = document_id
+                stored.append(row)
+            self._save(self.calendar_path, kept + stored)
+        except (OSError, ValueError) as e:
+            return fail(f"Could not write to the calendar file: {e}", UNAVAILABLE)
+        return ok(stored, backend=self.name)
+
+    def list_calendar_events(
+        self, confirmed_only: bool = True, document_id: str | None = None
+    ) -> dict:
+        try:
+            events = [blank_event(**e) for e in self._load(self.calendar_path, default=[])]
+        except (OSError, ValueError) as e:
+            return fail(f"Could not read the calendar file: {e}", UNAVAILABLE)
+        if confirmed_only:
+            events = [e for e in events if e["confirmed"]]
+        if document_id is not None:
+            wanted = document_id.strip().upper()
+            events = [e for e in events if str(e["document_id"]).upper() == wanted]
+        # Undated rows (a holiday with "date to be announced") last, as in SQL.
+        events.sort(key=lambda e: (e["start_date"] is None, e["start_date"] or "", e["id"]))
+        return ok(events, backend=self.name)

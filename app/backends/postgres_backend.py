@@ -31,10 +31,15 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from .. import clock, config
-from ..models import Attendance, Base, Record, RecordEvent, User
+from ..models import Attendance, Base, CalendarEvent, Document, Record, RecordEvent, User
 from . import (
+    CALENDAR_EVENT_FIELDS,
     COMPLAINT,
     COMPLAINT_PREFIX,
+    DOCUMENT_FIELDS,
+    DOCUMENT_MUTABLE_FIELDS,
+    DOCUMENT_PREFIX,
+    DOCUMENT_START,
     INVALID,
     MUTABLE_FIELDS,
     NOT_FOUND,
@@ -47,13 +52,21 @@ from . import (
 )
 
 PUBLIC_USER_COLUMNS = (
-    "id", "username", "name", "role", "department", "year", "section",
-    "residence", "context",
+    "id", "username", "name", "role", "department", "branch", "year",
+    "semester", "section", "residence", "context",
 )
 
 
 def _as_dict(row: Record) -> dict:
     return {k: getattr(row, k) for k in RECORD_FIELDS}
+
+
+def _doc_dict(d: Document) -> dict:
+    return {k: getattr(d, k) for k in DOCUMENT_FIELDS}
+
+
+def _cal_dict(e: CalendarEvent) -> dict:
+    return {k: getattr(e, k) for k in CALENDAR_EVENT_FIELDS}
 
 
 def _event_dict(e: RecordEvent) -> dict:
@@ -272,5 +285,117 @@ class PostgresBackend:
                     {"attended": a.attended, "held": a.held, "as_of": a.as_of},
                     backend=self.name,
                 )
+        except SQLAlchemyError as e:
+            return self._unavailable(e)
+
+    # -- uploaded documents ------------------------------------------------
+    def _find_doc(self, db: Session, document_id: str) -> Document | None:
+        return db.scalar(
+            select(Document).where(func.upper(Document.id) == (document_id or "").strip().upper())
+        )
+
+    def create_document(self, **fields: Any) -> dict:
+        fields = {k: v for k, v in fields.items() if k in DOCUMENT_FIELDS and k != "id"}
+        for _ in range(2):  # same id race as _insert
+            try:
+                with self._db() as db, db.begin():
+                    ids = db.scalars(select(Document.id)).all()
+                    used = [int(i[len(DOCUMENT_PREFIX):]) for i in ids
+                            if i[len(DOCUMENT_PREFIX):].isdigit()]
+                    row = Document(id=f"{DOCUMENT_PREFIX}{max(used, default=DOCUMENT_START - 1) + 1}",
+                                   **fields)
+                    db.add(row)
+                return ok(_doc_dict(row), backend=self.name)
+            except IntegrityError:
+                continue
+            except SQLAlchemyError as e:
+                return self._unavailable(e)
+        return fail("could not allocate a document id; please retry", UNAVAILABLE)
+
+    def get_document(self, document_id: str) -> dict:
+        try:
+            with self._db() as db:
+                row = self._find_doc(db, document_id)
+                return ok(_doc_dict(row) if row else None, backend=self.name)
+        except SQLAlchemyError as e:
+            return self._unavailable(e)
+
+    def update_document(self, document_id: str, **fields: Any) -> dict:
+        unknown = set(fields) - DOCUMENT_MUTABLE_FIELDS
+        if unknown:
+            return fail(f"Fields not updatable: {', '.join(sorted(unknown))}.", INVALID)
+        try:
+            with self._db() as db, db.begin():
+                row = self._find_doc(db, document_id)
+                if row is None:
+                    return fail(f"No document {document_id} exists.", NOT_FOUND)
+                for k, v in fields.items():
+                    setattr(row, k, v)
+            return ok(_doc_dict(row), backend=self.name)
+        except SQLAlchemyError as e:
+            return self._unavailable(e)
+
+    def list_documents(self) -> dict:
+        try:
+            with self._db() as db:
+                rows = db.scalars(
+                    select(Document).order_by(Document.uploaded_at.desc(), Document.id.desc())
+                ).all()
+                return ok([_doc_dict(d) for d in rows], backend=self.name)
+        except SQLAlchemyError as e:
+            return self._unavailable(e)
+
+    def delete_document(self, document_id: str) -> dict:
+        # One transaction: the document and its events go together or not at all.
+        try:
+            with self._db() as db, db.begin():
+                row = self._find_doc(db, document_id)
+                if row is None:
+                    return fail(f"No document {document_id} exists.", NOT_FOUND)
+                gone = _doc_dict(row)
+                for e in db.scalars(select(CalendarEvent).where(CalendarEvent.document_id == row.id)):
+                    db.delete(e)
+                db.flush()
+                db.delete(row)
+            return ok(gone, backend=self.name)
+        except SQLAlchemyError as e:
+            return self._unavailable(e)
+
+    # -- the calendar ------------------------------------------------------
+    def replace_calendar_events(self, document_id: str, events: list[dict]) -> dict:
+        try:
+            with self._db() as db, db.begin():
+                for e in db.scalars(select(CalendarEvent).where(CalendarEvent.document_id == document_id)):
+                    db.delete(e)
+                db.flush()
+                rows = []
+                for e in events:
+                    fields = {k: e.get(k) for k in CALENDAR_EVENT_FIELDS if k not in ("id", "document_id")}
+                    fields["years"] = fields.get("years") or "all"
+                    fields["include"] = bool(fields.get("include", True))
+                    fields["confirmed"] = bool(fields.get("confirmed"))
+                    row = CalendarEvent(document_id=document_id, **fields)
+                    db.add(row)
+                    rows.append(row)
+                db.flush()
+                stored = [_cal_dict(r) for r in rows]
+            return ok(stored, backend=self.name)
+        except SQLAlchemyError as e:
+            return self._unavailable(e)
+
+    def list_calendar_events(
+        self, confirmed_only: bool = True, document_id: str | None = None
+    ) -> dict:
+        stmt = select(CalendarEvent)
+        if confirmed_only:
+            stmt = stmt.where(CalendarEvent.confirmed.is_(True))
+        if document_id is not None:
+            stmt = stmt.where(func.upper(CalendarEvent.document_id) == document_id.strip().upper())
+        try:
+            with self._db() as db:
+                # Undated rows last on every dialect (SQLite sorts NULL first).
+                rows = db.scalars(stmt.order_by(CalendarEvent.start_date.is_(None),
+                                                CalendarEvent.start_date, CalendarEvent.id)).all()
+                return ok([_cal_dict(e) for e in rows], backend=self.name)
         except SQLAlchemyError as e:
             return self._unavailable(e)

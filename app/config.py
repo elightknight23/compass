@@ -70,6 +70,13 @@ ATTENDANCE_THRESHOLD = float(os.getenv("ATTENDANCE_THRESHOLD", "0.75"))
 PERIODS_PER_DAY = int(os.getenv("PERIODS_PER_DAY", "6"))
 OD_IS_CONDONED = _flag("OD_IS_CONDONED", True)
 
+# -- uploaded documents --------------------------------------------------------
+# Originals and their extracted text live here (gitignored); the registry is
+# in the record backend and the vectors in ChromaDB.
+UPLOADS_DIR = Path(os.getenv("UPLOADS_DIR", str(DATA_DIR / "uploads")))
+MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "20"))
+MAX_UPLOAD_PAGES = int(os.getenv("MAX_UPLOAD_PAGES", "400"))
+
 # -- sessions -----------------------------------------------------------------
 # Eight hours: a working day, so a demo never logs itself out mid-sentence.
 SESSION_TTL = int(os.getenv("COMPASS_SESSION_TTL", str(8 * 60 * 60)))
