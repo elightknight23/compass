@@ -1,0 +1,46 @@
+QUESTION: "I've been selected for a two-week national-level sports camp and will be on OD. How far in advance do I have to apply?"
+GROUND TRUTH: 10 working days (od_and_leave_policy.md > Applying for OD > Long-Duration OD)
+
+============================================================================
+  NAIVE  (collection: compass_regulations_naive, k=1)
+============================================================================
+
+  [1] od_and_leave_policy.md :: chunk #2   (distance 0.3054)
+      rded against the advisor who made it, with the date. ## Applying for
+      OD ### Standard OD OD must be applied for before the activity, not
+      after it. A request for a standard OD — one to five working days —
+      should reach the faculty advisor at least 2 working days before the
+      first day of the activity, together with the invitation, selection
+      letter or circular for the event. ### Long-Duration OD Some activities
+      run for longer than a working week: national-level sports camps,
+      extended internships
+
+  ANSWER (naive, via gemini-3.5-flash-lite):
+      I don't know and suggest asking the faculty advisor or the hostel
+      office.   Source: `od_and_leave_policy.md`, chunk 2
+
+============================================================================
+  STRUCTURED  (collection: compass_regulations, k=1)
+============================================================================
+
+  [1] od_and_leave_policy.md :: OD and Leave Policy > Applying for OD > Long-Duration OD   (distance 0.3329)
+      [OD and Leave Policy > Applying for OD > Long-Duration OD] Some
+      activities run for longer than a working week: national-level sports
+      camps, extended internships arranged through the Training and
+      Placement Cell, and residential NSS or NCC camps. Requests covering
+      more than five working days need the Head of the Department's
+      endorsement in addition to the faculty advisor's approval. Such
+      requests must reach the faculty advisor at least 10 working days
+      before the first day. The endorsement step cannot be completed in less
+      time, and a request that arrives late will normally be rejected.
+
+  ANSWER (structured, via gemini-3.5-flash-lite):
+      You must submit your request to the faculty advisor at least 10
+      working days before the first day.   *(Source: od_and_leave_policy.md,
+      section "OD and Leave Policy > Applying for OD > Long-Duration OD")*
+
+============================================================================
+  VERDICT
+============================================================================
+  naive        MISS — could not state the rule
+  structured   correct — 10 working days

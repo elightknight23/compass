@@ -6,7 +6,7 @@ simplification.
 
 ## 1. The graph
 
-One classifier, nine handlers, one exit. The shape makes the argument:
+One classifier, ten handlers, one exit. The shape makes the argument:
 **there is exactly one model call that decides anything, and it happens
 before anything is allowed to touch a record.** Everything downstream of
 `classify` is deterministic Python.
@@ -15,8 +15,9 @@ before anything is allowed to touch a record.** Everything downstream of
 flowchart TD
     S([START]) --> CLS["<b>classify</b><br/>Gemini · primary → fallback model<br/>structured output · the only deciding LLM call"]
 
-    subgraph GROUND ["answers from documents"]
-        REG["regulation_question"]
+    subgraph GROUND ["answers from the College's documents"]
+        REG["document_question"]
+        CALQ["calendar_question"]
     end
 
     subgraph OWN ["acts on your own records"]
@@ -37,6 +38,7 @@ flowchart TD
     end
 
     CLS -->|"route: the intent IS the node name"| REG
+    CLS --> CALQ
     CLS --> FILE
     CLS --> LV
     CLS --> AMEND
@@ -51,7 +53,10 @@ flowchart TD
     AMEND --> OWNER["owner-only<br/>(staff go through the lock)"]
     CANCEL --> OWNER
 
-    REG -.->|"retrieve k=4 · local MiniLM"| CHROMA[("ChromaDB<br/>regulation sections")]
+    REG --> FILT["<b>rag.build_filter</b><br/>asker's branch + semester<br/>no match → 'not uploaded'"]
+    FILT -.->|"retrieve k=4 · local MiniLM"| CHROMA[("ChromaDB<br/>regulations + uploads")]
+    CALQ --> CALC["<b>confirmed calendar</b><br/>dates compared to today in Python<br/>per year of study"]
+    CALC -.-> BE
     LOCK -.-> BE
     FILE -.-> BE
     OWNER -.-> BE
@@ -60,7 +65,8 @@ flowchart TD
 
     BE["<b>RecordBackend</b> protocol<br/>postgres · json"]
 
-    REG --> RESP
+    FILT --> RESP
+    CALC --> RESP
     FILE --> RESP
     ATT --> RESP
     OWNER --> RESP
@@ -78,7 +84,7 @@ flowchart TD
     classDef store fill:#1e293b,stroke:#0f172a,color:#fff
     class CLS llm
     class LOCK,OWNER gate
-    class ATT py
+    class ATT,FILT,CALC py
     class BE port
     class CHROMA store
 ```
@@ -88,7 +94,7 @@ authorization is decided. **Blue** is arithmetic the model never sees.
 **Amber** is the seam that lets the record store change without any handler
 knowing.
 
-(`regulation_question`, `clarify` and `out_of_scope` also call the model, to
+(`document_question`, `clarify` and `out_of_scope` also call the model, to
 *phrase* an answer. None of those calls can choose an action or touch a
 record.)
 
@@ -107,7 +113,7 @@ holidays included, and `app/attendance.py` does the division.
 
 ```mermaid
 flowchart TD
-    MSG["user message + last 6 turns"] --> LLM["classifier<br/>Pydantic schema, 9 intents"]
+    MSG["user message + last 6 turns"] --> LLM["classifier<br/>Pydantic schema, 10 intents"]
 
     LLM --> PARTS["date <b>parts</b> the model heard<br/>anchor_weekday · week_offset · end_weekday<br/>duration_weekdays · day_offset · explicit_start_date"]
     LLM --> META["intent · confidence · reasoning · record_id<br/>target_person · category · priority · leave_kind<br/>action · grant_exception"]

@@ -26,8 +26,12 @@ How to report the result, and why:
   utterances and the prompt they are scored against. A high score measures
   self-consistency, not resilience to strangers.
 
-This makes one model call per utterance (two with --both) — mind the
-free-tier daily cap.
+This makes one model call per utterance (two with --both). The free tier
+limits requests PER MINUTE, so calls are paced (--pace seconds apart) and a
+row the model never answered is retried after a pause. A row that still
+gets no answer is reported as NOT SCORED, never counted as a miss: an
+unanswered call degrades to clarify, and scoring that would measure the
+quota, not the prompt.
 """
 
 from __future__ import annotations
@@ -35,8 +39,8 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from collections import Counter, defaultdict
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -46,7 +50,8 @@ from app import config, graph, llm  # noqa: E402
 from app.state import new_state  # noqa: E402
 
 DATASET = config.DATA_DIR / "eval_utterances.json"
-WORKERS = 3  # gentle on free-tier rate limits
+RETRIES = 2
+RETRY_WAIT = 40  # seconds: long enough for a per-minute quota to refill
 
 CODE = {
     "document_question": "DOC",
@@ -80,9 +85,15 @@ def load() -> list[dict]:
 
 
 def predict(row: dict) -> dict:
-    state = new_state(row["utterance"], ASKER, row.get("history"))
-    out = graph.classify(state)
-    d = out["debug"]
+    for attempt in range(RETRIES + 1):
+        state = new_state(row["utterance"], ASKER, row.get("history"))
+        out = graph.classify(state)
+        d = out["debug"]
+        if not d.get("classifier_error") or attempt == RETRIES:
+            break
+        print(f"   (model unavailable on {row['utterance'][:40]!r}; retrying in {RETRY_WAIT}s)",
+              file=sys.stderr, flush=True)
+        time.sleep(RETRY_WAIT)
     return {
         **row,
         "got": out["intent"],
@@ -93,19 +104,25 @@ def predict(row: dict) -> dict:
     }
 
 
-def run(rows: list[dict], label: str, naive: bool) -> list[dict]:
+def run(rows: list[dict], label: str, naive: bool, pace: float) -> list[dict]:
     saved = graph.CLASSIFIER_RULES
     graph.CLASSIFIER_RULES = NAIVE_RULES if naive else saved
+    out = []
     try:
-        with ThreadPoolExecutor(WORKERS) as pool:
-            return list(pool.map(predict, rows))
+        for i, row in enumerate(rows):
+            if i:
+                time.sleep(pace)  # one at a time, under the per-minute quota
+            out.append(predict(row))
     finally:
         graph.CLASSIFIER_RULES = saved
+    return out
 
 
 def matrix(results: list[dict]) -> None:
     grid: dict[str, Counter] = defaultdict(Counter)
     for r in results:
+        if r["error"]:
+            continue
         grid[r["expected"]][r["got"]] += 1
     print("\n  expected \\ got  " + " ".join(CODE[i] for i in ORDER))
     for exp in ORDER:
@@ -115,23 +132,25 @@ def matrix(results: list[dict]) -> None:
         print(f"  {CODE[exp]:<15} {cells}")
 
 
-def report(results: list[dict], label: str) -> int:
-    correct = sum(r["got"] == r["expected"] for r in results)
-    providers = Counter(r["provider"] for r in results)
-    print(f"\n=== {label}: {correct}/{len(results)} "
-          f"(providers: {', '.join(f'{p}={n}' for p, n in providers.items())})")
+def report(results: list[dict], label: str) -> tuple[int, int]:
+    scored = [r for r in results if not r["error"]]
+    correct = sum(r["got"] == r["expected"] for r in scored)
+    providers = Counter(r["provider"] for r in scored)
+    print(f"\n=== {label}: {correct}/{len(scored)} "
+          f"(providers: {', '.join(f'{p}={n}' for p, n in providers.items()) or 'none'})")
     errors = [r for r in results if r["error"]]
     if errors:
-        print(f"  {len(errors)} classifier errors, e.g. {errors[0]['error'][:120]}")
+        print(f"  {len(errors)} NOT SCORED — the model never answered "
+              f"(e.g. {errors[0]['error'][:100]}). Re-run before quoting this.")
     matrix(results)
-    misses = [r for r in results if r["got"] != r["expected"]]
+    misses = [r for r in scored if r["got"] != r["expected"]]
     if misses:
         print("\n  misses:")
         for r in misses:
             down = f" (downgraded from {r['raw']})" if r["raw"] != r["got"] else ""
             print(f"   - {r['utterance']!r}\n       expected {r['expected']}, "
                   f"got {r['got']}{down}  conf={r['confidence']}  [{r['trap']}]")
-    return correct
+    return correct, len(scored)
 
 
 def main() -> int:
@@ -141,17 +160,23 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--naive", action="store_true", help="thin prompt only")
     ap.add_argument("--both", action="store_true", help="naive then shipping, with the delta")
+    ap.add_argument("--pace", type=float, default=4.0,
+                    help="seconds between calls (free tier: ~15 requests/minute)")
     args = ap.parse_args()
 
     rows = load()
     print(f"{len(rows)} labelled utterances from {DATASET.relative_to(ROOT)}")
     if args.naive or args.both:
-        naive = report(run(rows, "naive", naive=True), "thin baseline prompt")
+        naive, n_naive = report(run(rows, "naive", naive=True, pace=args.pace), "thin baseline prompt")
     if not args.naive:
-        shipping = report(run(rows, "shipping", naive=False), "shipping prompt")
+        shipping, n_ship = report(run(rows, "shipping", naive=False, pace=args.pace), "shipping prompt")
     if args.both:
-        print(f"\ndelta: {naive}/{len(rows)} -> {shipping}/{len(rows)} "
-              f"({shipping - naive:+d}). Report it as a range across runs.")
+        if n_naive == n_ship == len(rows):
+            print(f"\ndelta: {naive}/{len(rows)} -> {shipping}/{len(rows)} "
+                  f"({shipping - naive:+d}). Report it as a range across runs.")
+        else:
+            print(f"\nno delta: not every row was scored ({n_naive} and {n_ship} of "
+                  f"{len(rows)}). Re-run when the quota has recovered.")
     return 0
 
 

@@ -1,0 +1,45 @@
+58 labelled utterances from data/eval_utterances.json
+
+=== thin baseline prompt: 52/58 (providers: gemini-3.5-flash-lite=58)
+
+  expected \ got  DOC CAL CMP LV  STA AMD CNL STF CLR OOS
+  DOC              13   1   .   .   .   .   .   .   .   .
+  CAL               .   7   .   .   .   .   .   .   .   .
+  CMP               .   .   5   .   .   .   .   .   .   .
+  LV                .   1   .   5   .   .   .   .   .   .
+  STA               .   .   .   .   6   .   .   .   .   .
+  AMD               .   .   2   .   .   1   .   .   .   .
+  CNL               .   .   .   .   .   .   4   .   .   .
+  STF               .   .   .   .   .   .   .   5   .   .
+  CLR               .   .   .   .   1   .   .   .   2   1
+  OOS               .   .   .   .   .   .   .   .   .   4
+
+  misses:
+   - 'make it high priority'
+       expected amend_record, got file_complaint  conf=0.95  [bare follow-up; must not file a new complaint]
+   - "actually that's a lab issue, not hostel"
+       expected amend_record, got file_complaint  conf=0.95  [category change, no id]
+   - 'I need help'
+       expected clarify, got out_of_scope  conf=1.0  [genuinely ambiguous]
+   - 'what about mine?'
+       expected clarify, got check_status  conf=0.85  [dangling reference with no history]
+   - 'Can I take leave on a holiday?'
+       expected document_question, got calendar_question  conf=0.95  [TRAP: 'holiday' and 'leave', but asks a rule]
+   - 'I need leave on the day after Deepavali'
+       expected request_od_leave, got calendar_question  conf=0.8  [TRAP: a festival named, but this APPLIES for leave]
+
+=== shipping prompt: 58/58 (providers: gemini-3.5-flash-lite=58)
+
+  expected \ got  DOC CAL CMP LV  STA AMD CNL STF CLR OOS
+  DOC              14   .   .   .   .   .   .   .   .   .
+  CAL               .   7   .   .   .   .   .   .   .   .
+  CMP               .   .   5   .   .   .   .   .   .   .
+  LV                .   .   .   6   .   .   .   .   .   .
+  STA               .   .   .   .   6   .   .   .   .   .
+  AMD               .   .   .   .   .   3   .   .   .   .
+  CNL               .   .   .   .   .   .   4   .   .   .
+  STF               .   .   .   .   .   .   .   5   .   .
+  CLR               .   .   .   .   .   .   .   .   4   .
+  OOS               .   .   .   .   .   .   .   .   .   4
+
+delta: 52/58 -> 58/58 (+6). Report it as a range across runs.

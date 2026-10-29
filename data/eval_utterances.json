@@ -2,7 +2,7 @@
   {
     "utterance": "What's the minimum attendance I need to write exams?",
     "expected": "document_question",
-    "trap": "happy path \u2014 asks what the rule IS"
+    "trap": "happy path — asks what the rule IS"
   },
   {
     "utterance": "Is OD counted as present?",
@@ -22,7 +22,7 @@
   {
     "utterance": "Can a shortage be condoned if I was sick?",
     "expected": "document_question",
-    "trap": "condonation \u2014 the rule, not an application"
+    "trap": "condonation — the rule, not an application"
   },
   {
     "utterance": "What time do the hostel gates close?",
@@ -47,7 +47,7 @@
   {
     "utterance": "The ceiling fan in my hostel room isn't working",
     "expected": "file_complaint",
-    "trap": "happy path \u2014 hostel"
+    "trap": "happy path — hostel"
   },
   {
     "utterance": "Bus 7 skipped the Velachery stop again this morning",
@@ -72,7 +72,7 @@
   {
     "utterance": "I need OD next Monday to Wednesday for a symposium",
     "expected": "request_od_leave",
-    "trap": "happy path \u2014 OD with dates"
+    "trap": "happy path — OD with dates"
   },
   {
     "utterance": "Apply for medical leave tomorrow, I have fever",
@@ -97,7 +97,7 @@
   {
     "utterance": "What's my attendance right now?",
     "expected": "check_status",
-    "trap": "their own figure \u2014 not the attendance rule"
+    "trap": "their own figure — not the attendance rule"
   },
   {
     "utterance": "Any update on my complaints?",
@@ -117,7 +117,7 @@
   {
     "utterance": "Show me Arjun's leave requests",
     "expected": "check_status",
-    "trap": "someone else's \u2014 still a read, not a staff action"
+    "trap": "someone else's — still a read, not a staff action"
   },
   {
     "utterance": "How short is Arjun on attendance?",
@@ -135,7 +135,7 @@
       },
       {
         "role": "assistant",
-        "content": "Filed **CMP-1004** (hostel, priority medium) \u2014 status open."
+        "content": "Filed **CMP-1004** (hostel, priority medium) — status open."
       }
     ]
   },
@@ -150,7 +150,7 @@
       },
       {
         "role": "assistant",
-        "content": "Filed **CMP-1005** (hostel, priority medium) \u2014 status open."
+        "content": "Filed **CMP-1005** (hostel, priority medium) — status open."
       }
     ]
   },
@@ -172,7 +172,7 @@
   {
     "utterance": "never mind, close CMP-1003",
     "expected": "cancel_record",
-    "trap": "'close' with a withdrawal cue \u2014 not a staff resolve"
+    "trap": "'close' with a withdrawal cue — not a staff resolve"
   },
   {
     "utterance": "withdraw all my requests",
@@ -205,14 +205,14 @@
       },
       {
         "role": "assistant",
-        "content": "OD-2002 would take the student from 73.0% to 70.9%, below the 75% requirement. Approving it means granting an attendance exception \u2014 confirm that's intended."
+        "content": "OD-2002 would take the student from 73.0% to 70.9%, below the 75% requirement. Approving it means granting an attendance exception — confirm that's intended."
       }
     ]
   },
   {
     "utterance": "Approve my own leave please",
     "expected": "staff_action",
-    "trap": "a student asking \u2014 classify what is ASKED; code refuses"
+    "trap": "a student asking — classify what is ASKED; code refuses"
   },
   {
     "utterance": "I need help",
@@ -253,5 +253,70 @@
     "utterance": "what's the cricket score?",
     "expected": "out_of_scope",
     "trap": "unrelated"
+  },
+  {
+    "utterance": "When is the next holiday?",
+    "expected": "calendar_question",
+    "trap": "happy path — WHEN a dated event is"
+  },
+  {
+    "utterance": "Are there any holidays in November?",
+    "expected": "calendar_question",
+    "trap": "a month, not a date; still asks when"
+  },
+  {
+    "utterance": "Is there college on Friday?",
+    "expected": "calendar_question",
+    "trap": "no 'holiday' word at all — a working-day question"
+  },
+  {
+    "utterance": "When do the model exams start?",
+    "expected": "calendar_question",
+    "trap": "exam vocabulary, but asks a date, not an exam rule"
+  },
+  {
+    "utterance": "Is Deepavali a holiday this year?",
+    "expected": "calendar_question",
+    "trap": "a named festival; reads like a rule but asks the calendar"
+  },
+  {
+    "utterance": "When does this semester end?",
+    "expected": "calendar_question",
+    "trap": "semester dates, not a regulation"
+  },
+  {
+    "utterance": "Can I take leave on a holiday?",
+    "expected": "document_question",
+    "trap": "TRAP: 'holiday' and 'leave', but asks a rule"
+  },
+  {
+    "utterance": "What's the recommended textbook for Computer Networks?",
+    "expected": "document_question",
+    "trap": "happy path — syllabus"
+  },
+  {
+    "utterance": "What are the units in Compiler Design?",
+    "expected": "document_question",
+    "trap": "syllabus, no 'syllabus' word"
+  },
+  {
+    "utterance": "Which reference books are there for ECE signals and systems?",
+    "expected": "document_question",
+    "trap": "names another branch — still a document question"
+  },
+  {
+    "utterance": "What subjects do I have this semester?",
+    "expected": "document_question",
+    "trap": "'my' courses — the code knows the semester"
+  },
+  {
+    "utterance": "Do I have classes on 9th November?",
+    "expected": "calendar_question",
+    "trap": "a literal date and 'classes' — is it a working day?"
+  },
+  {
+    "utterance": "I need leave on the day after Deepavali",
+    "expected": "request_od_leave",
+    "trap": "TRAP: a festival named, but this APPLIES for leave"
   }
 ]
