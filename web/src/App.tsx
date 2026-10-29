@@ -1,18 +1,20 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
 import { Chat } from "./components/Chat";
+import { Documents, UpcomingCard } from "./components/Documents";
 import { Login } from "./components/Login";
 import { AttendanceCard, MyRecords } from "./components/Records";
 import { StaffQueue } from "./components/StaffQueue";
 import { initials, ROLE_NAMES } from "./format";
 import type { User } from "./types";
 
-type View = "chat" | "records" | "queue";
+type View = "chat" | "records" | "queue" | "documents";
 
 const VIEW_TITLE: Record<View, string> = {
   chat: "Ask Compass",
   records: "My requests",
   queue: "Staff queue",
+  documents: "Documents",
 };
 
 export default function App() {
@@ -34,7 +36,12 @@ export default function App() {
 
   const isStaff = user.capabilities.length > 0;
   const isStudent = user.role === "student";
-  const views: View[] = ["chat", ...(isStudent ? (["records"] as View[]) : []), ...(isStaff ? (["queue"] as View[]) : [])];
+  const views: View[] = [
+    "chat",
+    ...(isStudent ? (["records"] as View[]) : []),
+    ...(isStaff ? (["queue"] as View[]) : []),
+    "documents",
+  ];
 
   async function logout() {
     await api.logout().catch(() => undefined);
@@ -75,6 +82,7 @@ export default function App() {
             <span className="muted small">
               {ROLE_NAMES[user.role] ?? user.role}
               {user.section ? ` · ${user.section}` : ""}
+              {user.semester ? ` · sem ${user.semester}` : ""}
             </span>
           </div>
           <button className="link" onClick={logout}>
@@ -100,6 +108,7 @@ export default function App() {
           {view === "records" && (
             <div className="scroll-pad">
               <AttendanceCard refreshKey={refreshKey} />
+              <UpcomingCard />
               <h2 className="h2">Complaints and leave requests</h2>
               <MyRecords refreshKey={refreshKey} />
             </div>
@@ -107,6 +116,11 @@ export default function App() {
           {view === "queue" && (
             <div className="scroll-pad">
               <StaffQueue user={user} refreshKey={refreshKey} />
+            </div>
+          )}
+          {view === "documents" && (
+            <div className="scroll-pad wide">
+              <Documents />
             </div>
           )}
         </div>

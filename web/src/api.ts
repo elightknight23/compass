@@ -1,4 +1,6 @@
-import type { Attendance, CampusRecord, RecordEvent, Trace, User } from "./types";
+import type {
+  Attendance, CalendarEvent, CampusDocument, CampusRecord, RecordEvent, Trace, User,
+} from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -11,10 +13,12 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  // A FormData body sets its own multipart Content-Type, boundary included.
+  const json = !(init.body instanceof FormData);
   const res = await fetch(path, {
     credentials: "same-origin",
     ...init,
-    headers: { "Content-Type": "application/json", ...(init.headers || {}) },
+    headers: { ...(json ? { "Content-Type": "application/json" } : {}), ...(init.headers || {}) },
   });
   const text = await res.text();
   const body = text ? JSON.parse(text) : {};
@@ -53,7 +57,36 @@ export const api = {
       `/api/records/${encodeURIComponent(id)}/action`,
       { method: "POST", body: JSON.stringify({ action, grant_exception: grantException }) },
     ),
+
+  documents: () => request<{ documents: CampusDocument[]; may_manage: boolean }>("/api/documents"),
+  document: (id: string) =>
+    request<{ data: CampusDocument }>(`/api/documents/${encodeURIComponent(id)}`),
+  upload: (form: FormData) =>
+    request<{ outcome: string; data: CampusDocument }>("/api/documents", { method: "POST", body: form }),
+  deleteDocument: (id: string) =>
+    request<{ data: CampusDocument }>(`/api/documents/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  calendarDraft: (id: string) =>
+    request<{ data: { document: CampusDocument; events: CalendarEvent[] } }>(
+      `/api/documents/${encodeURIComponent(id)}/events`,
+    ),
+  confirmCalendar: (id: string, events: CalendarEvent[]) =>
+    request<{ data: { events: CalendarEvent[]; confirmed: number; holidays: number } }>(
+      `/api/documents/${encodeURIComponent(id)}/events`,
+      { method: "PUT", body: JSON.stringify({ events }) },
+    ),
+  calendar: (start?: string, end?: string) => {
+    const q = new URLSearchParams();
+    if (start) q.set("start", start);
+    if (end) q.set("end", end);
+    return request<{ source: "calendar" | "seed"; events: CalendarEvent[] }>(`/api/calendar?${q}`);
+  },
+  reindex: () =>
+    request<{ structured: number; uploads: number; status: { state: string } }>(
+      "/api/admin/reindex", { method: "POST" },
+    ),
 };
+
+export const documentFileUrl = (id: string) => `/api/documents/${encodeURIComponent(id)}/file`;
 
 /**
  * One chat turn over Server-Sent Events.

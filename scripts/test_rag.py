@@ -79,6 +79,11 @@ def main() -> int:
         check("  and the index now reports stale", rag.index_status()["state"] == "stale")
         rag.build_index()
         check("re-indexing makes it fresh again", rag.index_status()["state"] == "fresh")
+        saved_format = rag.INDEX_FORMAT
+        rag.INDEX_FORMAT = "an older chunk format"
+        check("an index built by older code is stale, though no document changed",
+              rag.index_status()["state"] == "stale")
+        rag.INDEX_FORMAT = saved_format
         (corpus / "hostel_rules.md").rename(corpus / "hostel.md")
         check("renaming a document also counts as stale (citations change)",
               rag.index_status()["state"] == "stale")

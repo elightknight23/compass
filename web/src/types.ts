@@ -10,7 +10,9 @@ export interface User {
   name: string;
   role: Role;
   department?: string | null;
+  branch?: string | null;
   year?: number | null;
+  semester?: number | null;
   section?: string | null;
   residence?: string | null;
   // Derived server-side from auth.ROLE_CAPABILITIES. Used to decide which
@@ -102,9 +104,21 @@ export interface Trace {
   holidays_skipped?: string[];
   attendance?: Projection;
   needs_exception?: boolean;
-  retrieved?: { source: string; section?: string | null; distance?: number }[];
-  sources?: { source: string; section?: string | null; distance?: number }[];
+  retrieved?: Citation[];
+  sources?: Citation[];
   index?: { state: string; detail?: string };
+  // document_question: the filter Python built from who is asking
+  filter?: { scope: string; doc_type?: string; branch?: string; semester?: number };
+  // calendar_question: what was heard, the span it meant, what matched
+  calendar?: {
+    heard: Record<string, unknown>;
+    range: string;
+    mode: string;
+    source: "calendar" | "seed";
+    matched: number;
+    year?: number;
+  };
+  holiday_calendar?: "calendar" | "seed" | "none";
   [key: string]: unknown;
 }
 
@@ -113,4 +127,52 @@ export interface ChatTurn {
   content: string;
   trace?: Trace;
   pending?: boolean;
+}
+
+export interface Citation {
+  source: string;
+  section?: string | null;
+  doc_id?: string | null; // "corpus" for the built-in regulations, DOC-… for uploads
+  distance?: number;
+}
+
+export type DocType = "regulation" | "academic_calendar" | "syllabus" | "other";
+export type DocStatus = "processing" | "indexed" | "needs_review" | "failed";
+
+// Mirrors app/backends DOCUMENT_FIELDS.
+export interface CampusDocument {
+  id: string;
+  title: string;
+  filename: string;
+  content_type: string | null;
+  sha256: string;
+  size: number;
+  pages: number | null;
+  doc_type: DocType;
+  branch: string;
+  semester: number | null;
+  academic_year: string | null;
+  status: DocStatus;
+  error: string | null;
+  chunks: number | null;
+  uploaded_by: string;
+  uploaded_at: string;
+}
+
+export type EventKind = "holiday" | "exam" | "semester_start" | "semester_end" | "other";
+
+// Mirrors app/backends CALENDAR_EVENT_FIELDS.
+export interface CalendarEvent {
+  id: number | null;
+  document_id: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  title: string;
+  kind: EventKind;
+  years: string; // "all" or "1,2"
+  source_text?: string | null;
+  page?: number | null;
+  flags?: string[];
+  include: boolean;
+  confirmed: boolean;
 }

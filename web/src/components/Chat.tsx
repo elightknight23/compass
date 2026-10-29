@@ -9,6 +9,8 @@ const HISTORY_TURNS = 6; // matches app/graph.py — the classifier's sliding wi
 const PROMPTS: Record<string, string[]> = {
   student: [
     "What's the minimum attendance I need?",
+    "When is the next holiday?",
+    "What's the textbook for Computer Networks?",
     "What's my attendance right now?",
     "I need OD next Monday to Wednesday for a symposium",
     "The fan in my hostel room isn't working",
@@ -24,6 +26,7 @@ const PROMPTS: Record<string, string[]> = {
     "Approve Ravi's OD request",
     "What's Arjun's attendance?",
     "Approve OD-2002",
+    "Any holidays in November?",
     "Is OD counted as present?",
   ],
 };

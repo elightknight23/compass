@@ -357,11 +357,11 @@ def _document_titles(ids: set[str]) -> dict[str, str]:
 
 def _calendar_footer(source: str, titles: dict[str, str]) -> str:
     if source == "seed":
-        return ("\n\n_These come from the placeholder holiday list — no academic "
-                "calendar has been confirmed yet, so check with your advisor._")
+        return ("\n\n*These come from the placeholder holiday list — no academic "
+                "calendar has been confirmed yet, so check with your advisor.*")
     if titles:
-        return "\n\n_From " + ", ".join(f"{t} ({i})" for i, t in titles.items()) + "._"
-    return "\n\n_From the College's academic calendar._"
+        return "\n\n*From " + ", ".join(f"{t} ({i})" for i, t in titles.items()) + ".*"
+    return "\n\n*From the College's academic calendar.*"
 
 
 # ---------------------------------------------------------------------------

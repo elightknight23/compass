@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { documentFileUrl } from "../api";
 import { pct, rulePct } from "../format";
 import type { Trace as TraceT } from "../types";
 
@@ -18,6 +19,11 @@ const TONE: Record<string, "ok" | "deny" | "warn"> = {
   needs_action: "warn", needs_change: "warn", not_found: "warn",
   write_failed: "warn", read_failed: "warn", past_dates: "warn", bad_dates: "warn",
   model_unavailable: "warn", index_missing: "warn",
+  no_documents: "warn", none_found: "warn",
+};
+
+const SCOPE_NAMES: Record<string, string> = {
+  regulation: "regulations", syllabus: "syllabi", academic_calendar: "the calendar document",
 };
 
 function heardPhrase(h: Record<string, unknown>): string {
@@ -118,6 +124,31 @@ export function Trace({ d, live = false }: { d: TraceT; live?: boolean }) {
         </Section>
       )}
 
+      {d.calendar && (
+        <Section title="Calendar · dates compared in Python, not by the model">
+          <Row k="heard">
+            <span className="seam mono">
+              {Object.entries(d.calendar.heard).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join("  ") || "—"}
+            </span>
+          </Row>
+          <Row k="span"><span className="mono">{d.calendar.range}</span><span className="muted"> · {d.calendar.mode}</span></Row>
+          <Row k="matched"><span className="mono">{d.calendar.matched}</span>{d.calendar.year ? <span className="muted"> · year {d.calendar.year}'s holidays</span> : null}</Row>
+          <Row k="source">
+            <Chip tone={d.calendar.source === "calendar" ? "ok" : "warn"}>
+              {d.calendar.source === "calendar" ? "confirmed academic calendar" : "placeholder holidays.json"}
+            </Chip>
+          </Row>
+        </Section>
+      )}
+
+      {d.filter && (
+        <Section title="Searched · filter built in Python from who is asking">
+          <Row k="documents">{d.filter.doc_type ? SCOPE_NAMES[d.filter.doc_type] ?? d.filter.doc_type : "everything"}</Row>
+          {d.filter.branch && <Row k="branch"><Chip>{d.filter.branch}</Chip><span className="muted"> + all-branch documents</span></Row>}
+          {d.filter.semester && <Row k="semester"><Chip>{d.filter.semester}</Chip></Row>}
+        </Section>
+      )}
+
       {d.authz && (
         <Section title="Authorization · an if statement, not a prompt">
           <Row k="verdict">
@@ -132,10 +163,14 @@ export function Trace({ d, live = false }: { d: TraceT; live?: boolean }) {
       )}
 
       {Array.isArray(cites) && cites.length > 0 && (
-        <Section title="Retrieved from the regulations">
+        <Section title="Retrieved from the College's documents">
           {cites.map((c, i) => (
             <div className="cite" key={i}>
-              <span className="src">{c.source}</span>
+              {c.doc_id && c.doc_id !== "corpus" ? (
+                <a className="src" href={documentFileUrl(c.doc_id)} target="_blank" rel="noreferrer">{c.source}</a>
+              ) : (
+                <span className="src">{c.source}</span>
+              )}
               <span className="sec">{(c.section ?? "").split(" > ").slice(1).join(" › ") || c.section}</span>
               {typeof c.distance === "number" && <span className="d">{c.distance.toFixed(3)}</span>}
             </div>

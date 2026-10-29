@@ -88,6 +88,12 @@ def corpus_files() -> list[Path]:
 
 INDEXED_STATUSES = ("indexed", "needs_review")
 
+# Bumped whenever what a chunk carries changes (its metadata, its text
+# shape). Mixed into the corpus hash, so an index built by older code reads
+# as stale instead of "fresh" — an index whose chunks lack the metadata the
+# filters ask for matches nothing, silently, which is worse than missing.
+INDEX_FORMAT = "2: doc_id/doc_type/branch/semester metadata"
+
 
 def upload_text_path(doc_id: str) -> Path:
     """Where an upload's normalised markdown lives — what is actually indexed."""
@@ -120,7 +126,7 @@ def corpus_hash(paths: list[Path] | None = None, uploads: list[tuple[dict, str]]
     contribute their id and the text that was indexed, so adding, deleting
     or re-processing one changes the hash too.
     """
-    h = hashlib.sha256()
+    h = hashlib.sha256(INDEX_FORMAT.encode() + b"\0")
     for p in paths if paths is not None else corpus_files():
         h.update(p.name.encode())
         h.update(b"\0")
