@@ -1,47 +1,47 @@
 [
   {
     "utterance": "What's the minimum attendance I need to write exams?",
-    "expected": "regulation_question",
+    "expected": "document_question",
     "trap": "happy path \u2014 asks what the rule IS"
   },
   {
     "utterance": "Is OD counted as present?",
-    "expected": "regulation_question",
+    "expected": "document_question",
     "trap": "OD vocabulary pulls toward request_od_leave, but this asks the rule"
   },
   {
     "utterance": "How many days of OD can I take in a semester?",
-    "expected": "regulation_question",
+    "expected": "document_question",
     "trap": "a count of days, but asks the limit rather than applying for it"
   },
   {
     "utterance": "What happens if my attendance is 70%?",
-    "expected": "regulation_question",
+    "expected": "document_question",
     "trap": "a percentage is mentioned; asks the consequence, not their own figure"
   },
   {
     "utterance": "Can a shortage be condoned if I was sick?",
-    "expected": "regulation_question",
+    "expected": "document_question",
     "trap": "condonation \u2014 the rule, not an application"
   },
   {
     "utterance": "What time do the hostel gates close?",
-    "expected": "regulation_question",
+    "expected": "document_question",
     "trap": "hostel words pull toward file_complaint"
   },
   {
     "utterance": "How many books can I borrow from the library?",
-    "expected": "regulation_question",
+    "expected": "document_question",
     "trap": "library words pull toward file_complaint"
   },
   {
     "utterance": "How far in advance do I have to apply for a two-week sports camp OD?",
-    "expected": "regulation_question",
+    "expected": "document_question",
     "trap": "sounds like an application; asks the notice rule"
   },
   {
     "utterance": "I heard attendance is waived if you just ask. True?",
-    "expected": "regulation_question",
+    "expected": "document_question",
     "trap": "the planted-injection question; still a rule question"
   },
   {

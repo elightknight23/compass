@@ -48,6 +48,11 @@ CONFIDENCE_FLOOR = 0.45  # below this, ask instead of guessing
 # ---------------------------------------------------------------------------
 _NULLISH = {"", "null", "none", "n/a"}
 
+MonthName = Literal[
+    "january", "february", "march", "april", "may", "june", "july", "august",
+    "september", "october", "november", "december",
+]
+
 
 class Classification(BaseModel):
     """Structured output contract for one user message."""
@@ -194,14 +199,70 @@ class Classification(BaseModel):
         ),
     )
 
+    # -- document_question: what to search. Heard, never decided: the code
+    # turns these and the asker's profile into the actual filter.
+    doc_scope: Literal["regulations", "syllabus", "calendar"] | None = Field(
+        default=None,
+        description=(
+            "For document_question: syllabus = subjects, units, text books, "
+            "reference books, credits, course codes; regulations = rules and "
+            "policies; calendar = what the academic calendar document says. "
+            "Null if unclear."
+        ),
+    )
+    branch: str | None = Field(
+        default=None,
+        description=(
+            "A branch/department the user NAMED, e.g. 'ECE's syllabus' -> 'ECE', "
+            "'for computer science' -> 'computer science'. Null if they named none "
+            "('my syllabus' is null — the code knows their branch)."
+        ),
+    )
+    semester: int | None = Field(
+        default=None,
+        description="A semester number the user NAMED: '5th sem' -> 5. Null otherwise.",
+    )
+    my_courses: bool = Field(
+        default=False,
+        description=(
+            "True when the user means their OWN current courses: 'my subjects', "
+            "'this semester', 'my textbooks'."
+        ),
+    )
+
+    # -- calendar_question: which events, and when.
+    calendar_kind: Literal["holiday", "exam", "semester", "any"] | None = Field(
+        default=None,
+        description=(
+            "For calendar_question: holiday (holidays, vacations, days off), exam "
+            "(CAT, model, end-semester exams), semester (reopening, last working "
+            "day), any (everything, or a single-day 'is there college on X?')."
+        ),
+    )
+    month: MonthName | None = Field(
+        default=None,
+        description="A month the user named without a day: 'holidays in November' -> november.",
+    )
+    next_only: bool = Field(
+        default=False,
+        description="True for 'the NEXT holiday' / 'when is the next exam' — one event, the soonest.",
+    )
+
 
 CLASSIFIER_RULES = """You are the intent classifier for Compass, the College's \
 campus service desk. Students, hostel wardens and faculty advisors use it. \
 Classify the user's latest message into exactly one intent.
 
-regulation_question - asks what a RULE is: attendance, OD and leave policy,
-                      exams, hostel rules, library, transport.
-                      "What's the minimum attendance?", "Is OD counted as present?"
+document_question   - asks what the College's documents SAY: a RULE (attendance,
+                      OD and leave policy, exams, hostel, library, transport), the
+                      SYLLABUS (subjects, units, text books, reference books,
+                      credits), or what the calendar document says in general.
+                      "What's the minimum attendance?", "Is OD counted as present?",
+                      "What's the textbook for Computer Networks?", "Units in DBMS?"
+calendar_question   - asks WHEN something dated happens, or whether a day is a
+                      holiday: holidays, exam dates, semester start/end.
+                      "When is the next holiday?", "Any holidays in November?",
+                      "Is there college on Friday?", "When do CAT exams start?"
 file_complaint      - reports a NEW facility problem: hostel, lab, library, transport.
                       "The fan in room B-214 isn't working", "Bus 7 didn't come"
 amend_record        - CHANGES something the user already filed. No new problem is
@@ -229,10 +290,23 @@ out_of_scope        - greetings, small talk, questions about Compass itself, and
                       "write my assignment"
 
 Rules:
-- Asking what a rule is = regulation_question. Asking to APPLY it = the action intent.
-  "How many days of OD can I take?" -> regulation_question.
+- Asking what a rule is = document_question. Asking to APPLY it = the action intent.
+  "How many days of OD can I take?" -> document_question.
   "Put in OD for Friday" -> request_od_leave.
-- Asking for one's OWN attendance figure is check_status, not regulation_question.
+- WHEN a dated event is = calendar_question; what a document SAYS = document_question.
+  "When is the next holiday?" -> calendar_question, calendar_kind=holiday, next_only.
+  "Holidays in November?" -> calendar_question, calendar_kind=holiday, month=november.
+  "Is Friday a holiday?" / "Is there college on Friday?" -> calendar_question,
+    calendar_kind=any, anchor_weekday=friday, week_offset=0.
+  "Any exams next week?" -> calendar_question, calendar_kind=exam, week_offset=1
+    (no weekday: leave anchor_weekday null).
+  "What is the attendance requirement?" -> document_question, doc_scope=regulations.
+- Syllabus questions are document_question with doc_scope=syllabus. Fill branch or
+  semester ONLY if the user named one; "my"/"this semester" is my_courses=true.
+    "Textbook for Computer Networks?"     -> doc_scope=syllabus
+    "What are my subjects this semester?" -> doc_scope=syllabus, my_courses=true
+    "ECE 3rd sem syllabus for signals"    -> doc_scope=syllabus, branch=ECE, semester=3
+- Asking for one's OWN attendance figure is check_status, not document_question.
 - A new problem is file_complaint; an existing one is check_status.
 - cancel_record vs staff_action turns on WHOSE record and WHY, not the verb.
   Withdrawing something because it is no longer wanted is cancel_record.
@@ -358,6 +432,22 @@ def classify(state: AgentState) -> dict:
             "grant_exception": result.grant_exception or None,
             "description": result.description,
             "about_attendance": result.about_attendance or None,
+            "doc_scope": result.doc_scope,
+            "branch": result.branch,
+            "semester": result.semester,
+            "my_courses": result.my_courses or None,
+            "calendar_kind": result.calendar_kind,
+            "month": result.month,
+            "next_only": result.next_only or None,
+            # "next week" with no weekday: resolve() needs an anchor, so the
+            # bare week is carried for the calendar handler to turn into a
+            # Monday-to-Sunday span.
+            "week_offset": (
+                result.week_offset
+                if result.week_offset is not None and not result.anchor_weekday
+                and not result.explicit_start_date and result.day_offset is None
+                else None
+            ),
             # Only carried when true — a False here would look like a
             # deliberate "just one" in the trace, which it isn't.
             "applies_to_all": result.applies_to_all or None,
@@ -423,7 +513,8 @@ def route(state: AgentState) -> str:
 # Assembly
 # ---------------------------------------------------------------------------
 HANDLERS = {
-    Intent.REGULATION_QUESTION.value: handlers.handle_regulation_question,
+    Intent.DOCUMENT_QUESTION.value: handlers.handle_document_question,
+    Intent.CALENDAR_QUESTION.value: handlers.handle_calendar_question,
     Intent.FILE_COMPLAINT.value: handlers.handle_file_complaint,
     Intent.AMEND_RECORD.value: handlers.handle_amend_record,
     Intent.CANCEL_RECORD.value: handlers.handle_cancel_record,

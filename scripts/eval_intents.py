@@ -49,7 +49,8 @@ DATASET = config.DATA_DIR / "eval_utterances.json"
 WORKERS = 3  # gentle on free-tier rate limits
 
 CODE = {
-    "regulation_question": "REG",
+    "document_question": "DOC",
+    "calendar_question": "CAL",
     "file_complaint": "CMP",
     "request_od_leave": "LV ",
     "check_status": "STA",
@@ -64,8 +65,8 @@ ORDER = list(CODE)
 NAIVE_RULES = """You are the intent classifier for a campus service desk.
 Classify the user's message into exactly one intent.
 
-regulation_question, file_complaint, request_od_leave, check_status,
-amend_record, cancel_record, staff_action, clarify, out_of_scope"""
+document_question, calendar_question, file_complaint, request_od_leave,
+check_status, amend_record, cancel_record, staff_action, clarify, out_of_scope"""
 
 # The persona every utterance is classified as. A student, because that is
 # who sends most of these; the classifier is told to classify what is ASKED

@@ -32,7 +32,14 @@ class Intent(StrEnum):
     friendly redirect rather than earning its own intent.
     """
 
-    REGULATION_QUESTION = "regulation_question"
+    # What the College's documents SAY — a rule, a syllabus, the calendar's
+    # text — answered from retrieved excerpts with citations.
+    DOCUMENT_QUESTION = "document_question"
+    # WHEN something dated happens: holidays, exams, semester dates, or
+    # whether a given day is a working day. Answered by Python from the
+    # confirmed calendar, not by the model reading dates out of excerpts:
+    # "the next holiday" compares dates to today, which is arithmetic (I5).
+    CALENDAR_QUESTION = "calendar_question"
     FILE_COMPLAINT = "file_complaint"
     # Changing a request the student already has. Split out of
     # FILE_COMPLAINT because without it "make it urgent", said one turn

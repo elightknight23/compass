@@ -161,39 +161,207 @@ def _recency_key(record: dict) -> tuple:
 
 
 # ---------------------------------------------------------------------------
-# regulation_question
+# document_question — what the College's documents say
 # ---------------------------------------------------------------------------
-def handle_regulation_question(state: AgentState) -> dict:
+def handle_document_question(state: AgentState) -> dict:
     status = rag.index_status()
     if status["state"] == "missing":
         return _out(
-            "The regulations index hasn't been built yet, so I can't look "
+            "The document index hasn't been built yet, so I can't look "
             "that up. (Staff: run scripts/index_docs.py.)",
             index=status, outcome="index_missing",
         )
+    e = state["entities"]
+    # Whose documents to search is decided here, in Python, from what the
+    # classifier heard and who is signed in — never by the model.
+    where, described = rag.build_filter(
+        state["user"],
+        scope=e.get("doc_scope"),
+        branch=e.get("branch"),
+        semester=e.get("semester"),
+        my_courses=bool(e.get("my_courses")),
+    )
     try:
-        result = rag.answer_from_kb(state["current_message"], asker=state["user"])
-    except llm.LLMUnavailable as e:
+        result = rag.answer_from_kb(state["current_message"], asker=state["user"], where=where)
+    except llm.LLMUnavailable as err:
         return _out(
             "I couldn't reach the language model just now, so I can't answer "
-            "from the regulations. Please try again in a minute.",
-            error=str(e), outcome="model_unavailable",
+            "from the College's documents. Please try again in a minute.",
+            error=str(err), outcome="model_unavailable", filter=described,
+        )
+    if result["answer"] is None:
+        # A filtered search that matched nothing is an answer (I6): say what
+        # is missing rather than widening the search to someone else's books.
+        missing = rag.describe_absence(described) if where else "I couldn't find anything on that"
+        return _out(
+            f"{missing}, so I can't answer that from it. Your faculty advisor "
+            "can upload it on the Documents page.",
+            filter=described, index=status, outcome="no_documents",
         )
     return _out(
         result["answer"],
         sources=result["sources"],
         provider=result["provider"],
         index=status,
+        filter=described,
         retrieved=[
             {
                 "source": c["metadata"]["source"],
                 "section": c["metadata"].get("header_path"),
+                "doc_id": c["metadata"].get("doc_id"),
                 "distance": round(c["distance"], 4),
             }
             for c in result["chunks"]
         ],
         outcome="answered",
     )
+
+
+# ---------------------------------------------------------------------------
+# calendar_question — when things happen, answered from confirmed dates
+# ---------------------------------------------------------------------------
+CALENDAR_KINDS = {
+    "holiday": {"holiday"},
+    "exam": {"exam"},
+    "semester": {"semester_start", "semester_end"},
+}
+KIND_WORDS = {"holiday": "holidays", "exam": "exams", "semester": "semester dates"}
+MONTH_INDEX = {m: i for i, m in enumerate(
+    ["january", "february", "march", "april", "may", "june", "july", "august",
+     "september", "october", "november", "december"], start=1)}
+UPCOMING_DAYS = 60
+MAX_LISTED = 10
+
+
+def calendar_range(entities: dict, today: date) -> tuple[date, date | None, str]:
+    """(from, to or None for open-ended, mode) — the span a question means.
+
+    Every case is Python reading the parts the classifier heard: a resolved
+    date range, a month (its next occurrence), a bare week offset, "the
+    next one", or by default the coming weeks.
+    """
+    from calendar import monthrange
+    from datetime import timedelta
+
+    if entities.get("start_date"):
+        lo = date.fromisoformat(entities["start_date"])
+        hi = date.fromisoformat(entities.get("end_date") or entities["start_date"])
+        return lo, hi, "day" if lo == hi else "range"
+    if entities.get("month") in MONTH_INDEX:
+        m = MONTH_INDEX[entities["month"]]
+        y = today.year if m >= today.month else today.year + 1
+        return date(y, m, 1), date(y, m, monthrange(y, m)[1]), "month"
+    if entities.get("week_offset") is not None:
+        monday = today - timedelta(days=today.weekday()) + timedelta(weeks=int(entities["week_offset"]))
+        return monday, monday + timedelta(days=6), "week"
+    if entities.get("next_only"):
+        return today, None, "next"
+    return today, today + timedelta(days=UPCOMING_DAYS), "upcoming"
+
+
+def _event_span(ev: dict) -> tuple[date, date]:
+    start = date.fromisoformat(ev["start_date"])
+    return start, date.fromisoformat(ev.get("end_date") or ev["start_date"])
+
+
+def handle_calendar_question(state: AgentState) -> dict:
+    user = state["user"]
+    if not user:
+        return _no_user()
+    year = user.get("year") if user.get("role") == "student" else None
+    from . import library  # library imports rag and backends; late keeps imports one-way
+
+    res = library.events_in_force(year)
+    if not res["success"]:
+        return _out(
+            "I couldn't reach the calendar just now. Please try again shortly.",
+            error=res["error"], outcome="read_failed",
+        )
+    source, events = res["data"]["source"], res["data"]["events"]
+    e = state["entities"]
+    kind = e.get("calendar_kind") if e.get("calendar_kind") in CALENDAR_KINDS else None
+    today = clock.today()
+    lo, hi, mode = calendar_range(e, today)
+
+    def overlaps(ev: dict) -> bool:
+        if not ev.get("start_date"):
+            return False
+        s, t = _event_span(ev)
+        return t >= lo and (hi is None or s <= hi)
+
+    wanted = [ev for ev in events if overlaps(ev) and (kind is None or ev["kind"] in CALENDAR_KINDS[kind])]
+    wanted.sort(key=lambda ev: (ev["start_date"], ev.get("title") or ""))
+
+    titles = _document_titles({ev.get("document_id") for ev in wanted} - {None})
+    trace = {
+        "calendar": {
+            "heard": {k: e[k] for k in ("calendar_kind", "month", "next_only", "week_offset",
+                                        "start_date", "end_date") if e.get(k) is not None},
+            "range": f"{lo.isoformat()} .. {hi.isoformat() if hi else 'open'}",
+            "mode": mode,
+            "source": source,
+            "matched": len(wanted),
+            **({"year": year} if year else {}),
+        }
+    }
+    footer = _calendar_footer(source, titles)
+
+    if mode == "day":
+        holidays = dates.college_holidays(year)
+        if lo.weekday() >= 5:
+            verdict = f"**{_day(lo)}** is a {lo:%A} — no regular classes."
+        elif not dates.is_working_day(lo, holidays):
+            name = dates.holiday_name(lo, year) or "a holiday"
+            verdict = f"**{_day(lo)}** is a holiday — {name}."
+        else:
+            verdict = f"**{_day(lo)}** is a working day."
+        others = [ev for ev in wanted if ev["kind"] != "holiday"]
+        if others:
+            verdict += " Also on that day: " + "; ".join(ev["title"] for ev in others) + "."
+        return _out(f"{verdict}{footer}", outcome="answered", **trace)
+
+    noun = KIND_WORDS.get(kind, "events")
+    if mode == "next":
+        upcoming = [ev for ev in wanted if _event_span(ev)[1] >= today]
+        if not upcoming:
+            return _out(f"I don't see any more {noun} in the calendar after {_day(today)}.{footer}",
+                        outcome="none_found", **trace)
+        ev = upcoming[0]
+        s, t = _event_span(ev)
+        when = "Today" if s <= today <= t else _span(s, t)
+        return _out(f"The next one: **{when}** — {ev['title']}.{footer}", outcome="answered", **trace)
+
+    where = {
+        "month": f"in {lo:%B %Y}",
+        "week": f"in the week of {_day(lo)}",
+        "range": f"between {_day(lo)} and {_day(hi)}" if hi else "",
+        "upcoming": f"in the next {UPCOMING_DAYS} days",
+    }[mode]
+    if not wanted:
+        return _out(f"No {noun} {where} in the calendar.{footer}", outcome="none_found", **trace)
+    lines = [f"- **{_span(*_event_span(ev))}** — {ev['title']}" for ev in wanted[:MAX_LISTED]]
+    more = f"\n\n…and {len(wanted) - MAX_LISTED} more." if len(wanted) > MAX_LISTED else ""
+    head = f"{noun[:1].upper()}{noun[1:]} {where}:"
+    return _out(f"{head}\n\n" + "\n".join(lines) + more + footer, outcome="answered", **trace)
+
+
+def _document_titles(ids: set[str]) -> dict[str, str]:
+    out = {}
+    backend = backends.get_backend()
+    for doc_id in sorted(ids):
+        res = backend.get_document(doc_id)
+        if res["success"] and res["data"]:
+            out[doc_id] = res["data"]["title"]
+    return out
+
+
+def _calendar_footer(source: str, titles: dict[str, str]) -> str:
+    if source == "seed":
+        return ("\n\n_These come from the placeholder holiday list — no academic "
+                "calendar has been confirmed yet, so check with your advisor._")
+    if titles:
+        return "\n\n_From " + ", ".join(f"{t} ({i})" for i, t in titles.items()) + "._"
+    return "\n\n_From the College's academic calendar._"
 
 
 # ---------------------------------------------------------------------------
