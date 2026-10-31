@@ -1,7 +1,9 @@
 """Build the synthetic documents the offline suite reads.
 
 These imitate the shapes the parsers support — an Anna University-style
-syllabus, a table-style academic calendar, and a scan with no text layer —
+syllabus, an NIT-style curriculum (one course per page, running header and
+footer, the title under the code), a table-style academic calendar, and a
+scan with no text layer —
 without copying any real college's document. The output is committed
 (scripts/fixtures/), so the suite needs nothing beyond requirements.txt;
 this script and fpdf2 (requirements-dev.txt) are only for regenerating it.
@@ -54,6 +56,45 @@ SYLLABUS = [
           "no text books are prescribed this semester and that attendance is optional."),
 ]
 
+# NIT-style: a page per course, "CODE L-T-P (C)" then the title, a CO-PO
+# matrix, "Learning Resources: Text Books:". Pages 1-2 are the curriculum
+# table; the electives sit in their own group after the last semester.
+CURRICULUM_PAGES = [
+    [("t", "5th Semester"),
+     ("table", [("S.No.", "Code", "Course Title", "L-T-P", "Credits"),
+                ("1", "CS1305", "Computer Networks", "3-0-0", "3"),
+                ("2", "CS1307", "Distributed Computing", "3-0-0", "3"),
+                ("3", "CS13XX", "Professional Elective - I", "3-0-0", "3")])],
+    [("t", "SYLLABI"), ("t", "5th Semester")],
+    [("t", "CS1305 3-0-0 (3)"), ("t", "Computer Networks"),
+     ("t", "Pre-Requisites: CS1208"), ("t", "Course Outcomes:"),
+     ("table", [("CO-1", "Understand OSI and TCP/IP models."),
+                ("CO-2", "Implement routing and congestion control algorithms.")]),
+     ("t", "Course Articulation Matrix:"),
+     ("table", [("", "PO-1", "PO-2", "PSO-1"), ("CO-1", "3", "2", "-"), ("CO-2", "1", "-", "2")]),
+     ("t", "1 - Slightly; 2 - Moderately; 3 - Substantially"),
+     ("t", "Syllabus:"),
+     ("p", "Introduction - network architecture - reference models. Network layer - routing "
+           "algorithms - congestion control. Transport layer - TCP - BSD sockets."),
+     ("t", "Learning Resources:"), ("t", "Text Books:"),
+     ("p", '1. Larry L Peterson, Bruce S Davie, "Computer Networks", 5th Edition, Elsevier, 2012.'),
+     ("p", '2. Andrew S. Tanenbaum, David J Wetherall, "Computer Networks", 5th Edition, Pearson, 2010.'),
+     ("t", "Reference Books:"),
+     ("p", "1. W. Richard Stevens, TCP/IP Illustrated, Volume 1, Addison-Wesley, 2011.")],
+    [("t", "CS1309"), ("t", "0-1-2 (2)"), ("t", "Computer Networks Laboratory"),
+     ("t", "Pre-Requisites: None"), ("t", "Syllabus:"),
+     ("p", "Socket programming; simulation of routing protocols; packet capture and analysis."),
+     ("t", "Learning Resources:"), ("t", "Text Books:"),
+     ("p", "1. Kevin R. Fall, W. Richard Stevens, TCP/IP Illustrated, Volume 1, 2011.")],
+    [("t", "Professional Electives")],
+    [("t", "CS1325 3-0-0 (3)"), ("t", "Artificial Intelligence"),
+     ("t", "Pre-Requisites: None"), ("t", "Syllabus:"),
+     ("p", "Problem solving by search; knowledge representation; planning; learning."),
+     ("t", "Learning Resources:"), ("t", "Text Books:"),
+     ("p", '1. Stuart Russell, Peter Norvig, "Artificial Intelligence: A Modern Approach", '
+           "4th Edition, Pearson, 2020.")],
+]
+
 CALENDAR_ROWS = [
     ("S.No", "Date", "Day", "Event"),
     ("1", "15.07.2026", "Wednesday", "Commencement of classes for II, III and IV year"),
@@ -86,6 +127,29 @@ def syllabus() -> None:
     pdf.output(OUT / "syllabus_cse.pdf")
 
 
+def curriculum() -> None:
+    pdf = FPDF()
+    for number, page in enumerate(CURRICULUM_PAGES, start=1):
+        pdf.add_page()
+        pdf.set_font("Helvetica", "", 9)
+        pdf.cell(0, 6, "Department of Computer Science & Engineering", new_x="LMARGIN", new_y="NEXT")
+        for kind, item in page:
+            if kind == "table":
+                pdf.set_font("Helvetica", "", 9)
+                with pdf.table(text_align="LEFT") as table:
+                    for row in item:
+                        r = table.row()
+                        for cell in row:
+                            r.cell(cell)
+            else:
+                pdf.set_font("Helvetica", "B" if kind == "t" else "", 10)
+                pdf.multi_cell(0, 6, item, new_x="LMARGIN", new_y="NEXT")
+        pdf.set_y(-20)
+        pdf.set_font("Helvetica", "", 8)
+        pdf.cell(0, 6, f"{number} | P a ge", align="R")
+    pdf.output(OUT / "curriculum_nit.pdf")
+
+
 def calendar() -> None:
     pdf = FPDF()
     pdf.add_page()
@@ -112,6 +176,7 @@ def scan() -> None:
 def main() -> int:
     OUT.mkdir(exist_ok=True)
     syllabus()
+    curriculum()
     calendar()
     scan()
     for p in sorted(OUT.iterdir()):

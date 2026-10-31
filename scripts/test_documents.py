@@ -42,6 +42,7 @@ FIX = Path(__file__).resolve().parent / "fixtures"
 SYLLABUS_PDF = (FIX / "syllabus_cse.pdf").read_bytes()
 CALENDAR_PDF = (FIX / "calendar_2026_27.pdf").read_bytes()
 SCANNED_PDF = (FIX / "scanned.pdf").read_bytes()
+CURRICULUM_PDF = (FIX / "curriculum_nit.pdf").read_bytes()
 
 
 def blocks(rows: list[str], kind: str = "row") -> D.Extracted:
@@ -137,6 +138,40 @@ def main() -> int:
           "### CS3591" not in table_row)
     vtu = D.to_markdown(blocks(["21CS51 AUTOMATA THEORY AND COMPUTABILITY"], "line"), "syllabus", "T")
     check("VTU-style codes (21CS51) are course headers too", "### 21CS51 Automata Theory and Computability" in vtu)
+
+    section("syllabus structure: the NIT layout (one course per page)")
+    nit_md = D.to_markdown(D.extract(CURRICULUM_PDF, ".pdf"), "syllabus", "CSE Curriculum")
+    doc = {"id": "DOC-1", "doc_type": "syllabus", "branch": "CSE", "semester": None, "title": "CSE Curriculum"}
+    nit = {c.metadata["header_path"]: c for c in rag.document_chunks(doc, nit_md)}
+    cn = nit.get("CSE Curriculum > Semester 5 > CS1305 Computer Networks > Text Books")
+    check("'CS1305 3-0-0 (3)' + the title on the next line is a course; its Text Books are a section",
+          cn is not None and "Peterson" in cn.text and "Tanenbaum" in cn.text, str(list(nit)))
+    check("  'Learning Resources:' is not a section of its own (its books are)",
+          not any(p.endswith("Learning Resources") for p in nit))
+    check("  'Reference Books:' is the References section",
+          "CSE Curriculum > Semester 5 > CS1305 Computer Networks > References" in nit)
+    check("  and the chunk is semester 5", cn is not None and cn.metadata["semester"] == 5)
+    check("code and L-T-P on separate lines ('CS1309' / '0-1-2 (2)') is a course too",
+          "CSE Curriculum > Semester 5 > CS1309 Computer Networks Laboratory > Text Books" in nit)
+    ai = nit.get("CSE Curriculum > Professional Electives > CS1325 Artificial Intelligence > Text Books")
+    check("an elective is filed under its group, not under the last semester",
+          ai is not None and "Norvig" in ai.text, str(list(nit)))
+    check("  and is semester 0, which every semester's filter matches", ai is not None and ai.metadata["semester"] == 0)
+    check("the CO-PO articulation matrix is dropped", "PSO-1" not in nit_md and "Slightly" not in nit_md)
+    check("the running header and the page footers are dropped",
+          "Department of Computer Science" not in nit_md and "P a ge" not in nit_md)
+    check("  but section words that appear on every course page are kept",
+          nit_md.count("#### Syllabus") == 3, str(nit_md.count("#### Syllabus")))
+    check("the curriculum table stays as rows under its semester",
+          "1 | CS1305 | Computer Networks | 3-0-0 | 3" in nit_md)
+    minors = D.to_markdown(blocks(["CS1M01 2-0-2 (3)", "Data Structures", "Minor: Computer Science and Engineering",
+                                   "CS1H01 3-0-0 (3)", "Advanced Compiler Design", "CS1495 0-0-0 (2)", "Minor Project"],
+                                  "line"), "syllabus", "T")
+    check("minor / honours codes (CS1M01, CS1H01) are course headers",
+          "### CS1M01 Data Structures" in minors and "### CS1H01 Advanced Compiler Design" in minors, minors)
+    check("  'Minor: ...' is a group, but the course 'Minor Project' is not",
+          "## Minor: Computer Science and Engineering" in minors and "### CS1495 Minor Project" in minors)
+
     generic = D.to_markdown(blocks(["Some text with no headings at all."], "line"), "other", "Misc")
     check("a document with no headings still gets one to cite (its page)", "## Page 1" in generic)
 

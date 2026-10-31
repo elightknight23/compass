@@ -29,11 +29,13 @@ Three stages:
    day and month gets caught), a row that looks like a holiday but has no
    date that could be read.
 
-The patterns are written against the common Indian-university layout
-(Anna University-style course codes such as CS3591 and VTU-style 21CS51,
-"UNIT I", "TEXT BOOKS", dd.mm.yyyy dates). A college with a different
-layout needs these patterns adjusted, and the tests in
-scripts/test_documents.py say which shapes are supported.
+The patterns are written against Indian-university layouts: NIT-style
+course pages ("CS1305 3-0-0 (3)" with the title on the next line,
+"Learning Resources: Text Books:", elective / minor / honours groups),
+Anna University-style codes such as CS3591 with "UNIT I" and "TEXT BOOKS",
+VTU-style 21CS51, and dd.mm.yyyy dates. A college with a different layout
+needs these patterns adjusted, and the tests in scripts/test_documents.py
+say which shapes are supported.
 """
 
 from __future__ import annotations
@@ -254,12 +256,30 @@ ROMAN = {"I": 1, "II": 2, "III": 3, "IV": 4, "V": 5, "VI": 6, "VII": 7, "VIII": 
 
 SEMESTER_RE = re.compile(r"^\s*SEMESTER\s*[-:–]?\s*(VIII|VII|VI|IV|IX|V|III|II|I|X|\d{1,2})\b\s*$", re.I)
 SEMESTER_ALT_RE = re.compile(r"^\s*(VIII|VII|VI|IV|IX|V|III|II|I|X|\d{1,2})\s*(?:st|nd|rd|th)?\s+SEMESTER\b\s*$", re.I)
-# CS3591 / CS 3591 / GE3451A (Anna University), or 21CS51 / 21CSL57 (VTU).
-COURSE_CODE = r"(?:[A-Z]{2,4}\s?\d{3,5}[A-Z]?|\d{2}[A-Z]{2,4}\d{2,3}[A-Z]?)"
+# CS1M01 / CS1H01 (NIT minors, honours), CS1305 / EC 1263 / CS3591 /
+# GE3451A (NIT, Anna University), or 21CS51 / 21CSL57 (VTU).
+COURSE_CODE = r"(?:[A-Z]{2,4}\d[A-Z]\d{2}|[A-Z]{2,4}\s?\d{3,5}[A-Z]?|\d{2}[A-Z]{2,4}\d{2,3}[A-Z]?)"
 COURSE_RE = re.compile(
     rf"^\s*({COURSE_CODE})\s*[-–:]?\s+([A-Z][A-Za-z0-9&,/()'.\- ]{{2,}}?)"
     r"(?:\s+L\s*T\s*P\s*C)?(?:\s+\d+(?:\.\d)?){0,4}\s*$"
 )
+# NIT layout: "CS1305 3-0-0 (3)" — or the code and the L-T-P (credits) on
+# two lines — with the course title on the line after.
+_LTP = r"\d{1,2}\s*-\s*\d{1,2}\s*-\s*\d{1,2}\s*\(\s*\d{1,2}(?:\.\d{1,2})?\s*\)"
+COURSE_LTP_RE = re.compile(rf"^\s*({COURSE_CODE})\s+{_LTP}\s*$")
+CODE_ONLY_RE = re.compile(rf"^\s*({COURSE_CODE})\s*$")
+LTP_ONLY_RE = re.compile(rf"^\s*{_LTP}\s*$")
+# Groups of courses that belong to no one semester: a chunk under one is
+# semester 0, which every semester's filter matches.
+GROUP_RE = re.compile(
+    r"^\s*(professional\s+electives?(?:\s+courses)?|open\s+electives?(?:\s+courses)?"
+    r"|(?:minor|honou?rs)\s*(?:degree\b[^.]*|:[^.]*)"
+    r"|(?:basic\s+science|engineering\s+science|humanities[a-z ,&]*|program\s+core)\s+courses"
+    r"|the\s+overall\s+credit\s+structure)\s*:?\s*$", re.I,
+)
+ARTICULATION_RE = re.compile(r"^\s*(?:course\s+)?articulation\s+matrix\b", re.I)
+MATRIX_LEGEND_RE = re.compile(r"^\s*1\s*-\s*slightly\b", re.I)
+LEARNING_RESOURCES_RE = re.compile(r"^\s*learning\s+resources?\s*:?\s*$", re.I)
 UNIT_RE = re.compile(r"^\s*UNIT\s*[-–:]?\s*(V|IV|III|II|I|\d)\b\s*[-–:.]?\s*(.*?)\s*(?:\d{1,2})?\s*$", re.I)
 SECTION_NAMES = [
     (re.compile(r"^\s*TEXT\s*-?\s*BOOKS?\b\s*:?\s*(.*)$", re.I), "Text Books"),
@@ -268,7 +288,12 @@ SECTION_NAMES = [
     (re.compile(r"^\s*COURSE\s+OUTCOMES?\b\s*:?\s*(.*)$", re.I), "Course Outcomes"),
     (re.compile(r"^\s*(?:LIST\s+OF\s+EXPERIMENTS|PRACTICAL\s+EXERCISES)\b\s*:?\s*(.*)$", re.I), "Practicals"),
     (re.compile(r"^\s*(?:WEB\s*REFERENCES?|ONLINE\s+RESOURCES?|E-?RESOURCES?)\b\s*:?\s*(.*)$", re.I), "Online Resources"),
+    (re.compile(r"^\s*SYLLABUS\s*:\s*(.*)$", re.I), "Syllabus"),
 ]
+# Page furniture: "62 | P a ge", "Page 3 of 40", a bare number.
+PAGE_NUMBER_RE = re.compile(
+    r"^\s*(?:\d{1,4}\s*\|\s*p\s*a\s*g\s*e|page\s*\d{1,4}(?:\s*of\s*\d{1,4})?|[-–]?\s*\d{1,4}\s*[-–]?)\s*$", re.I,
+)
 MONTH_HEADING_RE = re.compile(
     r"^\s*(JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|SEPTEMBER|OCTOBER|NOVEMBER|DECEMBER)"
     r"\s*[-–,]?\s*(\d{4})?\s*$", re.I,
@@ -303,15 +328,40 @@ def _is_caps_heading(text: str) -> bool:
     )
 
 
+def strip_furniture(blocks: list[Block], pages: int | None) -> list[Block]:
+    """Drop running headers, footers and page numbers.
+
+    A line counts as a running header or footer when it is the first or
+    last line on at least half the pages. Position matters: "Syllabus:"
+    is on most pages of a curriculum too, but never as the page's edge.
+    """
+    edges: dict[int, list[int]] = {}
+    for i, b in enumerate(blocks):
+        if b.kind == "line":
+            edges.setdefault(b.page, []).append(i)
+    edge_ids = {i for ids in edges.values() for i in (ids[:2] + ids[-2:])}
+    seen: dict[str, set[int]] = {}
+    for i in edge_ids:
+        seen.setdefault(blocks[i].text.strip(), set()).add(blocks[i].page)
+    n = pages or len(edges)
+    running = {t for t, on in seen.items() if n >= 4 and len(on) >= max(3, n / 2)}
+    return [
+        b for i, b in enumerate(blocks)
+        if not (b.kind == "line" and (PAGE_NUMBER_RE.match(b.text)
+                                      or (i in edge_ids and b.text.strip() in running)))
+    ]
+
+
 def to_markdown(extracted: Extracted, doc_type: str, title: str) -> str:
     """Headed markdown for the chunker. The document title is the top
     heading, so it heads every chunk's breadcrumb (and so every citation)."""
+    blocks = strip_furniture(extracted.blocks, extracted.pages)
     if doc_type == "syllabus":
-        body = _syllabus(extracted.blocks)
+        body = _syllabus(blocks)
     elif doc_type == "academic_calendar":
-        body = _calendar_md(extracted.blocks)
+        body = _calendar_md(blocks)
     else:
-        body = _generic(extracted.blocks)
+        body = _generic(blocks)
     return f"# {title}\n\n" + "\n".join(body).strip() + "\n"
 
 
@@ -320,19 +370,49 @@ def _render(b: Block) -> str:
 
 
 def _syllabus(blocks: list[Block]) -> list[str]:
-    """Semester -> course -> unit/section, as ## / ### / ####."""
+    """Semester (or elective group) -> course -> unit/section, as ## / ### / ####."""
     out: list[str] = []
     in_course = False
+    pending: tuple[str, str] | None = None  # (code, "ltp" | "title")
+    in_matrix = False
     for b in blocks:
         text = b.text.strip()
         if b.kind == "heading":
             out.append(f"\n{'#' * max(2, min(b.level, 4))} {text}\n")
+            pending, in_matrix = None, False
             continue
+        if in_matrix:
+            # The CO-PO articulation matrix is a grid of 1-3s: noise to a
+            # reader and to retrieval. It ends at its legend or at prose.
+            if b.kind == "row" or MATRIX_LEGEND_RE.match(text):
+                continue
+            in_matrix = False
+        if b.kind == "line" and pending:
+            code, stage = pending
+            pending = None
+            if stage == "ltp" and LTP_ONLY_RE.match(text):
+                pending = (code, "title")
+                continue
+            if stage == "title" and 2 <= len(text) <= 120 and not any(
+                p.match(text) for p, _ in SECTION_NAMES
+            ):
+                out.append(f"\n### {code} {_title_case(text)}\n")
+                in_course = True
+                continue
+            out.append(code)  # not a course header after all
         if b.kind == "line":
             m = SEMESTER_RE.match(text) or SEMESTER_ALT_RE.match(text)
             if m and semester_number(m.group(1)):
                 out.append(f"\n## Semester {semester_number(m.group(1))}\n")
                 in_course = False
+                continue
+            if GROUP_RE.match(text):
+                out.append(f"\n## {_title_case(text.rstrip(' :'))}\n")
+                in_course = False
+                continue
+            m = COURSE_LTP_RE.match(text) or CODE_ONLY_RE.match(text)
+            if m:
+                pending = (re.sub(r"\s+", "", m.group(1)), "title" if COURSE_LTP_RE.match(text) else "ltp")
                 continue
             m = COURSE_RE.match(text)
             # A line starting "1. CS3591 ..." is a row of the curriculum
@@ -343,6 +423,11 @@ def _syllabus(blocks: list[Block]) -> list[str]:
                 in_course = True
                 continue
             if in_course:
+                if ARTICULATION_RE.match(text):
+                    in_matrix = True
+                    continue
+                if LEARNING_RESOURCES_RE.match(text):
+                    continue  # its Text Books / References follow as sections
                 m = UNIT_RE.match(text)
                 if m:
                     name = _title_case(m.group(2).strip(" :-–")) if m.group(2) else ""
@@ -360,6 +445,8 @@ def _syllabus(blocks: list[Block]) -> list[str]:
                 if matched:
                     continue
         out.append(_render(b))
+    if pending:
+        out.append(pending[0])
     return out
 
 

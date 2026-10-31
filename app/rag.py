@@ -57,7 +57,7 @@ CHROMA_DIR = config.CHROMA_PATH
 CORPUS_DIR = config.REGULATIONS_DIR
 
 NAIVE_CHUNK_CHARS = 500
-MAX_CHUNK_TOKENS = 300  # structured chunks larger than this split on paragraphs
+MAX_CHUNK_TOKENS = 300  # structured chunks larger than this split on paragraphs, then lines
 ADD_BATCH = 1000  # ChromaDB caps how many rows one add() may carry
 
 # Chunk metadata for the built-in regulations. Chroma metadata must be
@@ -92,7 +92,7 @@ INDEXED_STATUSES = ("indexed", "needs_review")
 # shape). Mixed into the corpus hash, so an index built by older code reads
 # as stale instead of "fresh" — an index whose chunks lack the metadata the
 # filters ask for matches nothing, silently, which is worse than missing.
-INDEX_FORMAT = "2: doc_id/doc_type/branch/semester metadata"
+INDEX_FORMAT = "3: oversized paragraphs split by line; NIT-layout syllabi"
 
 
 def upload_text_path(doc_id: str) -> Path:
@@ -208,7 +208,12 @@ def _split_by_tokens(content: str, enc, max_tokens: int = MAX_CHUNK_TOKENS) -> l
     parts: list[str] = []
     current: list[str] = []
     current_tokens = 0
+    pieces: list[str] = []
     for para in re.split(r"\n\s*\n", content):
+        # A PDF page often has no blank lines at all, so one "paragraph"
+        # can be a whole page; the embedder would read only its start.
+        pieces.extend(para.splitlines() if len(enc.encode(para)) > max_tokens else [para])
+    for para in pieces:
         n = len(enc.encode(para))
         if current and current_tokens + n > max_tokens:
             parts.append("\n\n".join(current))
