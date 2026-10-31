@@ -45,6 +45,11 @@ RECORD_FIELDS = (
     # od_request
     "leave_kind", "start_date", "end_date", "working_days", "reason",
     "projection", "needs_exception",
+    # medical leave: the attached certificate's metadata (the file itself is
+    # in CERTIFICATES_DIR); None until the student attaches one
+    "certificate",
+    # facility_complaint: its mirrored issue in the external tracker, if any
+    "tracker",
     # set when a staff decision lands
     "decided_by", "decided_at",
 )
@@ -53,8 +58,13 @@ RECORD_FIELDS = (
 # once written — and so are the dates and the projection: changing the dates
 # of a leave request means a new projection, which means a new request.
 MUTABLE_FIELDS = frozenset(
-    {"status", "category", "priority", "notes", "reason", "decided_by", "decided_at"}
+    {"status", "category", "priority", "notes", "reason", "decided_by", "decided_at",
+     "certificate", "tracker"}
 )
+
+# The kinds of leave this college grants. "personal" is what the classifier
+# reports for a family function or a trip home: heard, then refused.
+LEAVE_KINDS = ("od", "medical", "family_emergency")
 
 # -- uploaded documents and the calendar parsed out of them ------------------
 DOCUMENT_PREFIX = "DOC-"
@@ -261,9 +271,15 @@ def get_backend() -> RecordBackend:
     if choice == "json":
         from .json_backend import JsonBackend  # lazy: it imports from here
 
-        return JsonBackend()
-    if choice == "postgres":
+        backend = JsonBackend()
+    elif choice == "postgres":
         from .postgres_backend import PostgresBackend
 
-        return PostgresBackend()
-    raise ValueError(f"Unknown RECORD_BACKEND={choice!r}. Expected postgres or json.")
+        backend = PostgresBackend()
+    else:
+        raise ValueError(f"Unknown RECORD_BACKEND={choice!r}. Expected postgres or json.")
+    from .. import tracker  # lazy: it imports from here
+
+    # With the complaint mirror configured, complaint changes also reach
+    # the issue tracker. The store underneath is the same either way.
+    return tracker.Mirrored(backend) if tracker.enabled() else backend

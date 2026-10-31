@@ -18,15 +18,19 @@ over the original. A plain json.dump() truncates the file first, so a crash
 (or a Ctrl-C during the demo) mid-write leaves it half-written and
 unparseable.
 
-Concurrency is not handled: two simultaneous writes can still lose one
-update, and a record write and its event write are two files, not one
-transaction. Postgres is where both of those are solved properly.
+Writes within one process are serialised by a module lock, so two request
+threads (or a request and the tracker mirror's background sync) cannot
+interleave a read-modify-rewrite and lose an update. Two *processes* on the
+same files still can, and a record write and its event write are two files,
+not one transaction. Postgres is where both of those are solved properly.
 """
 
 from __future__ import annotations
 
+import functools
 import json
 import os
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -50,6 +54,18 @@ from . import (
     fail,
     ok,
 )
+
+
+_WRITE = threading.RLock()
+
+
+def _serialised(method):
+    """Hold the write lock for a whole read-modify-rewrite."""
+    @functools.wraps(method)
+    def locked(*args, **kwargs):
+        with _WRITE:
+            return method(*args, **kwargs)
+    return locked
 
 
 class JsonBackend:
@@ -90,6 +106,7 @@ class JsonBackend:
         ]
         return f"{prefix}{max(used, default=start - 1) + 1}"
 
+    @_serialised
     def _append(self, record: dict) -> dict:
         try:
             records = self._records()
@@ -161,6 +178,7 @@ class JsonBackend:
         match = next((r for r in records if r["id"].upper() == wanted), None)
         return ok(match, backend=self.name)  # ok(None) == no such record
 
+    @_serialised
     def update_record(self, record_id: str, **fields: Any) -> dict:
         unknown = set(fields) - MUTABLE_FIELDS
         if unknown:
@@ -200,6 +218,7 @@ class JsonBackend:
         return ok(hits, backend=self.name)
 
     # -- audit trail -------------------------------------------------------
+    @_serialised
     def append_event(
         self,
         record_id: str,
@@ -275,6 +294,7 @@ class JsonBackend:
     def _documents(self) -> list[dict]:
         return [blank_document(**d) for d in self._load(self.documents_path, default=[])]
 
+    @_serialised
     def create_document(self, **fields: Any) -> dict:
         try:
             docs = self._documents()
@@ -294,6 +314,7 @@ class JsonBackend:
         wanted = (document_id or "").strip().upper()
         return ok(next((d for d in docs if d["id"].upper() == wanted), None), backend=self.name)
 
+    @_serialised
     def update_document(self, document_id: str, **fields: Any) -> dict:
         unknown = set(fields) - DOCUMENT_MUTABLE_FIELDS
         if unknown:
@@ -318,6 +339,7 @@ class JsonBackend:
         docs.sort(key=lambda d: (d.get("uploaded_at") or "", d["id"]), reverse=True)
         return ok(docs, backend=self.name)
 
+    @_serialised
     def delete_document(self, document_id: str) -> dict:
         try:
             docs = self._documents()
@@ -336,6 +358,7 @@ class JsonBackend:
         return ok(match, backend=self.name)
 
     # -- the calendar ------------------------------------------------------
+    @_serialised
     def replace_calendar_events(self, document_id: str, events: list[dict]) -> dict:
         try:
             current = self._load(self.calendar_path, default=[])

@@ -70,5 +70,6 @@ def sandbox(kind: str = "json", records: list[dict] | None = None):
     # Uploads land in the same throwaway directory, and the holiday cache
     # is rebuilt from this store rather than whatever the last suite left.
     config.UPLOADS_DIR = tmp / "uploads"
+    config.CERTIFICATES_DIR = tmp / "certificates"
     dates.refresh_holidays()
     return backend

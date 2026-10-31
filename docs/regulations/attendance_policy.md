@@ -50,9 +50,9 @@ OD counts as attendance only once it has been approved by the faculty
 advisor. A request that is submitted but not yet approved, or that is
 rejected, does not count.
 
-## Medical and Casual Leave
+## Medical and Family-Emergency Leave
 
-Medical leave and casual leave are **not** counted as attendance. The
+Medical leave and family-emergency leave are **not** counted as attendance. The
 periods missed are added to the periods held and not to the periods
 attended, so the percentage goes down.
 

@@ -16,6 +16,7 @@ data/events.json
 data/documents.json
 data/calendar.json
 data/uploads/
+data/certificates/
 data/records.json.*bak
 data/events.json.*bak
 

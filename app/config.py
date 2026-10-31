@@ -63,6 +63,15 @@ DATABASE_URL = os.getenv(
     "DATABASE_URL", "postgresql+psycopg://compass:compass@localhost:5433/compass"
 )
 
+# -- the complaint tracker mirror (app/tracker.py) — off unless both are set ---
+# GITHUB_REPO is "owner/name"; GITHUB_TOKEN a fine-grained token with
+# Issues: read and write on that one repository, nothing else.
+GITHUB_REPO = os.getenv("GITHUB_REPO", "").strip()
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "").strip()
+GITHUB_API = os.getenv("GITHUB_API", "https://api.github.com")
+GITHUB_TIMEOUT = float(os.getenv("GITHUB_TIMEOUT", "10"))
+TRACKER_RETRY_SECONDS = float(os.getenv("TRACKER_RETRY_SECONDS", "300"))
+
 # -- the domain ---------------------------------------------------------------
 # Defaults are the common Indian-university rule. They must match the
 # college's actual regulations, or every attendance figure on screen is wrong.
@@ -76,6 +85,14 @@ OD_IS_CONDONED = _flag("OD_IS_CONDONED", True)
 UPLOADS_DIR = Path(os.getenv("UPLOADS_DIR", str(DATA_DIR / "uploads")))
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "20"))
 MAX_UPLOAD_PAGES = int(os.getenv("MAX_UPLOAD_PAGES", "400"))
+
+# Medical certificates: stored on disk, shown to the student and to whoever
+# decides the leave, never sent to a model.
+CERTIFICATES_DIR = Path(os.getenv("CERTIFICATES_DIR", str(DATA_DIR / "certificates")))
+MAX_CERTIFICATE_MB = int(os.getenv("MAX_CERTIFICATE_MB", "10"))
+# Medical and family-emergency leave may be applied for after the fact, if
+# the first day is no more than this many days ago. OD may not.
+LEAVE_BACKDATE_DAYS = int(os.getenv("LEAVE_BACKDATE_DAYS", "7"))
 
 # -- sessions -----------------------------------------------------------------
 # Eight hours: a working day, so a demo never logs itself out mid-sentence.

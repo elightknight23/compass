@@ -81,13 +81,17 @@ class Record(Base):
     priority: Mapped[str | None] = mapped_column(String(8))
 
     # od_request
-    leave_kind: Mapped[str | None] = mapped_column(String(8))
+    leave_kind: Mapped[str | None] = mapped_column(String(24))
     start_date: Mapped[str | None] = mapped_column(String(10))
     end_date: Mapped[str | None] = mapped_column(String(10))
     working_days: Mapped[int | None] = mapped_column(Integer)
     reason: Mapped[str | None] = mapped_column(Text)
     projection: Mapped[dict | None] = mapped_column(JSON)
     needs_exception: Mapped[bool | None] = mapped_column(Boolean)
+    certificate: Mapped[dict | None] = mapped_column(JSON)
+
+    # facility_complaint, when mirrored to the external tracker
+    tracker: Mapped[dict | None] = mapped_column(JSON)
 
     decided_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
     decided_at: Mapped[str | None] = mapped_column(String(10))

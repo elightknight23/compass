@@ -2,8 +2,9 @@
 
 Two guarantees every suite gets by importing this first:
 
-1. **No network.** The model keys are blanked before `app.config` reads the
-   environment, so nothing here can reach a model API — and `load_dotenv`
+1. **No network.** The model key and the issue tracker's repo and token are
+   blanked before `app.config` reads the environment, so nothing here can
+   reach a model API or file a real issue — and `load_dotenv`
    never overrides a variable that is already set, so .env cannot put them
    back. A handler that would have called the model falls through to its
    designed fallback, which is itself worth testing.
@@ -25,6 +26,8 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 os.environ["GEMINI_API_KEY"] = ""
+os.environ["GITHUB_REPO"] = ""
+os.environ["GITHUB_TOKEN"] = ""
 os.environ.setdefault("COMPASS_TODAY", "2026-10-23")  # a Friday
 
 from _sandbox import sandbox  # noqa: E402,F401 — re-exported for the suites

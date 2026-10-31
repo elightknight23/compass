@@ -34,7 +34,10 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import attendance, auth, backends, clock, config, handlers, library, rag, users, warmup
+from . import (
+    attendance, auth, backends, certificates, clock, config, handlers, library, rag, tracker, users,
+    warmup,
+)
 from .graph import HISTORY_TURNS, graph
 from .state import new_state
 
@@ -50,7 +53,11 @@ async def lifespan(_: FastAPI):
     # "processing" forever, undeletable.
     library.recover_interrupted()
     warmup.warm_in_background()
+    # Complaints not yet mirrored to the tracker (it was down, or this is
+    # its first run) catch up now, then on a timer.
+    stop = tracker.start_retry_loop()
     yield
+    stop.set()
 
 
 app = FastAPI(title="Compass", lifespan=lifespan)
@@ -278,7 +285,7 @@ def get_record(record_id: str, user: dict = Depends(require_user)):
     events = backend.list_events(record["id"])
     owner = users.get(record["user_id"])
     return {
-        "record": record,
+        "record": certificates.public(record, user),
         "owner": public_user(owner) if owner else None,
         "events": events["data"] if events["success"] else [],
     }
@@ -300,6 +307,46 @@ def my_attendance(user: dict = Depends(require_user)):
         "below_threshold": proj.already_below,
         "days_of_margin": attendance.days_of_margin(row["attended"], row["held"]),
     }
+
+
+CERTIFICATE_OUTCOME_STATUS = {
+    "not_signed_in": 401,
+    "not_authorized": 403,
+    "not_found": 404,
+    "invalid": 400,
+    "empty": 400,
+    "unsupported_type": 415,
+    "too_large": 413,
+    "terminal_state": 409,
+    "unavailable": 502,
+}
+
+
+@app.post("/api/records/{record_id}/certificate")
+async def attach_certificate(record_id: str, file: UploadFile = File(...),
+                             user: dict = Depends(require_user)):
+    """The student attaches (or replaces) the certificate for their own
+    medical leave. certificates.attach checks who is asking, itself."""
+    data = await file.read(config.MAX_CERTIFICATE_MB * 1024 * 1024 + 1)
+    res = certificates.attach(user, record_id, file.filename or "certificate", data)
+    if not res["success"]:
+        return JSONResponse(status_code=CERTIFICATE_OUTCOME_STATUS.get(res["outcome"], 400),
+                            content={"detail": res["error"], "outcome": res["outcome"]})
+    return {"outcome": res["outcome"], "record": res["data"]}
+
+
+@app.get("/api/records/{record_id}/certificate")
+def certificate_file(record_id: str, user: dict = Depends(require_user)):
+    """The student's own, or one the caller may decide on — not every staff
+    member's: a warden reads records, not medical certificates."""
+    res = certificates.open_file(user, record_id)
+    if not res["success"]:
+        raise HTTPException(status_code=CERTIFICATE_OUTCOME_STATUS.get(res["outcome"], 400),
+                            detail=res["error"])
+    f = res["data"]
+    return FileResponse(f["path"], media_type=f["content_type"], filename=f["filename"],
+                        content_disposition_type="inline",
+                        headers={"Cache-Control": "private, no-store"})
 
 
 # ---------------------------------------------------------------------------
@@ -326,7 +373,7 @@ def queue(user: dict = Depends(require_staff)):
     backend = backends.get_backend()
     res = backend.list_all_records(caps)
     return {
-        "records": res["data"] or [] if res["success"] else [],
+        "records": [certificates.public(r, user) for r in res["data"] or []] if res["success"] else [],
         "users": {u["id"]: public_user(u) for u in users.all_users()},
         "backend": backend.name,
         # Which record types this payload speaks for. Without it the browser
@@ -346,6 +393,7 @@ OUTCOME_STATUS = {
     "wrong_action_for_type": 400,  # approving a complaint is a bad request
     "terminal_state": 409,
     "needs_exception_ack": 409,
+    "needs_certificate": 409,
 }
 
 
@@ -530,10 +578,12 @@ def reindex(user: dict = Depends(require_user)):
 
 @app.get("/api/health")
 def health():
-    """Liveness plus the two things a demo most needs to know up front."""
+    """Liveness plus what a demo most needs to know up front."""
     return {
         "backend": backends.get_backend().name,
         "index": rag.index_status(),
+        "tracker": ({"enabled": True, "repo": config.GITHUB_REPO, "pending": len(tracker.pending())}
+                    if tracker.enabled() else {"enabled": False}),
     }
 
 

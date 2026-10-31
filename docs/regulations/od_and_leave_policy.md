@@ -10,16 +10,22 @@ There are three kinds of student leave:
 
 - **On-Duty (OD)** — absence on College business, such as representing the
   College at an event or attending a placement drive.
-- **Medical leave** — absence due to illness or injury.
-- **Casual leave** — absence for personal reasons, such as a family
-  function.
+- **Medical leave** — absence due to illness or injury, supported by a
+  medical certificate.
+- **Family-emergency leave** — absence because of a serious emergency in
+  the student's immediate family, such as a bereavement or a family member's
+  hospitalisation.
 
-Only OD is counted as attendance. Medical and casual leave are authorised
-absence and reduce the attendance percentage.
+No other leave is granted. In particular, leave for personal reasons — a
+family function, a wedding, travel — is **not** granted (see Leave That Is
+Not Granted).
+
+Only OD is counted as attendance. Medical and family-emergency leave are
+authorised absence and reduce the attendance percentage.
 
 ## Who Approves Leave
 
-All student leave — OD, medical and casual — is approved or rejected by the
+All student leave — OD, medical and family emergency — is approved or rejected by the
 student's **faculty advisor**. Hostel wardens do not approve academic leave;
 a hosteller leaving campus must also make an entry in the hostel movement
 register, but that entry is not leave.
@@ -57,22 +63,39 @@ national or international level, and then only with the Principal's approval.
 
 Within 5 working days of returning, the student must submit a certificate of
 participation or attendance to the faculty advisor. OD for which no
-certificate is submitted is converted to casual leave.
+certificate is submitted is treated as unauthorised absence.
 
 ## Applying for Medical Leave
 
 Medical leave may be applied for after the absence, since illness is rarely
-planned. The application must be made within 3 working days of returning to
-classes.
+planned, provided the first day of leave is no more than 7 days earlier.
 
 A medical certificate from a registered medical practitioner is required for
-any medical leave of more than two working days. Certificates are also the
-basis on which a later shortage of attendance may be condoned.
+**every** medical leave. It should state the student's name, the practitioner's
+name and registration number, and the dates for which rest was advised. The
+faculty advisor cannot approve medical leave until the certificate has been
+submitted. Certificates are also the basis on which a later shortage of
+attendance may be condoned.
 
-## Applying for Casual Leave
+A certificate is seen only by the student and by the faculty advisor who
+decides the leave. It is not shown to hostel staff.
 
-Casual leave must be applied for in advance. A student may take at most 6
-working days of casual leave in a semester.
+## Applying for Family-Emergency Leave
+
+Family-emergency leave may be applied for before or after the absence,
+provided the first day of leave is no more than 7 days earlier. The request
+should say briefly what the emergency is. The faculty advisor may ask for
+supporting evidence before deciding.
+
+## Leave That Is Not Granted
+
+Leave for personal reasons — a family function, a wedding, a trip home, a
+personal errand — is not granted, and such a request is not accepted. A
+student who must be absent for such a reason is absent without leave, and the
+periods missed count against attendance in the ordinary way.
+
+Participation in a College-sanctioned event is not personal leave; it may
+qualify as OD.
 
 ## Leave That Would Cause a Shortage
 

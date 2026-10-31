@@ -76,6 +76,9 @@ class DateSpec:
     week_offset: int | None = None  # 0=this week, 1=next week, 4="four weeks"
     end_weekday: str | None = None  # the weekday leave ends on
     duration_weekdays: int | None = None  # "three days off" = 3
+    # The user described days already gone ("I was sick on Monday"). Only
+    # changes one thing: a weekday earlier this week is not rolled forward.
+    past: bool = False
 
     def is_empty(self) -> bool:
         return all(
@@ -288,10 +291,10 @@ def resolve(
         if idx is not None:
             weeks = spec.week_offset if spec.week_offset is not None else 0
             start = _monday_of(today) + timedelta(weeks=weeks, days=idx)
-            # "this Monday" when Monday has passed means the next one. An
-            # explicit offset is trusted as given — week_offset=0 with a
-            # past weekday only happens when the model meant this week.
-            if weeks == 0 and start < today:
+            # "this Monday" when Monday has passed means the next one —
+            # unless the user is talking about days already gone ("I was
+            # sick on Monday"). An explicit offset is trusted as given.
+            if weeks == 0 and start < today and not spec.past:
                 start += timedelta(weeks=1)
 
     if start is None and spec.day_offset is not None:

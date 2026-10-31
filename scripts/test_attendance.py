@@ -109,7 +109,7 @@ def main() -> int:
         config.OD_IS_CONDONED = True
         check("OD is condoned when the college condones it", attendance.is_condoned("od"))
         check("medical is never condoned", not attendance.is_condoned("medical"))
-        check("casual is never condoned", not attendance.is_condoned("casual"))
+        check("family emergency is never condoned", not attendance.is_condoned("family_emergency"))
         config.OD_IS_CONDONED = False
         check("OD is not condoned when OD_IS_CONDONED=false", not attendance.is_condoned("od"))
     finally:
@@ -124,9 +124,9 @@ def main() -> int:
         st["entities"] = entities
         return handlers.handle_request_od_leave(st)
 
-    out = apply(leave_kind="casual", start_date="2026-11-02", end_date="2026-11-04")
+    out = apply(leave_kind="medical", start_date="2026-11-02", end_date="2026-11-04")
     d = out["debug"]
-    check("casual leave that crosses the line is CREATED, not refused",
+    check("medical leave that crosses the line is CREATED, not refused",
           d.get("outcome") == "created", out["reply"])
     check("  and flagged needs_exception", d.get("needs_exception") is True)
     rec = backend.get_record(d["record_id"])["data"]
@@ -163,8 +163,51 @@ def main() -> int:
     out = apply(leave_kind="od", start_date="2026-11-04", end_date="2026-11-02")
     check("an inverted range is refused", out["debug"].get("outcome") == "bad_dates")
 
+    section("which leave is granted: OD, medical, family emergency — nothing else")
+    before = len(backend.list_records_for_user("U001")["data"])
+    out = apply(leave_kind="personal", start_date="2026-11-02", end_date="2026-11-04")
+    check("personal leave (a family function) is refused, citing the policy",
+          out["debug"].get("outcome") == "leave_not_granted" and "isn't granted" in out["reply"]
+          and "Leave That Is Not Granted" in out["reply"], out["reply"])
+    check("  and nothing was created", len(backend.list_records_for_user("U001")["data"]) == before)
+    out = apply(leave_kind="family_emergency", start_date="2026-11-02", end_date="2026-11-02")
+    check("family-emergency leave is created, and not counted as present",
+          out["debug"].get("outcome") == "created" and out["debug"]["attendance"]["condoned"] is False
+          and "family-emergency leave" in out["reply"], out["reply"])
+    check("  and asks for no certificate", "certificate" not in out["reply"]
+          and out["debug"].get("attach_certificate") is None)
+    out = apply(leave_kind="medical", start_date="2026-11-09", end_date="2026-11-09")
+    check("medical leave asks for the certificate, and says who can see it",
+          "Attach your medical certificate" in out["reply"] and "Only you and your advisor" in out["reply"]
+          and out["debug"].get("attach_certificate") == out["debug"]["record_id"], out["reply"])
+
+    section("leave already taken (today is Fri 23 Oct)")
+    out = apply(leave_kind="medical", start_date="2026-10-20", end_date="2026-10-21")
+    d = out["debug"]
+    check("medical leave for Tue-Wed this week is accepted after the fact",
+          d.get("outcome") == "created" and d.get("working_days") == 2, out["reply"])
+    check("  and those days are not counted twice: the percentage doesn't move",
+          d["attendance"]["working_days"] == 0 and d["attendance"]["added_periods"] == 0
+          and d.get("already_counted_days") == 2 and "doesn't change your **76.2%**" in out["reply"],
+          out["reply"])
+    out = apply(leave_kind="medical", start_date="2026-10-22", end_date="2026-10-27")
+    d = out["debug"]
+    check("a span from yesterday into next week counts only the days still to come",
+          d.get("working_days") == 4 and d["attendance"]["working_days"] == 3
+          and d.get("already_counted_days") == 1 and "One day already gone is in your attendance already" in out["reply"],
+          out["reply"])
+    out = apply(leave_kind="family_emergency", start_date="2026-10-16", end_date="2026-10-16")
+    check("family emergency exactly 7 days ago is still accepted",
+          out["debug"].get("outcome") == "created", out["reply"])
+    out = apply(leave_kind="medical", start_date="2026-10-15")
+    check("more than 7 days ago is refused, naming the limit",
+          out["debug"].get("outcome") == "past_dates" and "7 days" in out["reply"], out["reply"])
+    out = apply(leave_kind="od", start_date="2026-10-22")
+    check("OD is never applied for afterwards",
+          out["debug"].get("outcome") == "past_dates" and "before the event" in out["reply"])
+
     st = new_state("leave please", users.get("U102"))
-    st["entities"] = {"leave_kind": "casual", "start_date": "2026-11-02"}
+    st["entities"] = {"leave_kind": "medical", "start_date": "2026-11-02"}
     out = handlers.handle_request_od_leave(st)
     check("staff have no attendance, so no leave request is created",
           out["debug"].get("outcome") == "not_applicable")

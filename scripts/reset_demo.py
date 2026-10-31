@@ -12,6 +12,7 @@ different world than the first — and the narration stops matching the screen.
 
 The committed truth is data/records.json.seed (plus users, credentials and
 attendance). JSON is restored by copying it; Postgres by re-seeding from it.
+Attached medical certificates belong to the records, so they go too.
 
 Uploaded documents and their reviewed calendar are kept by default: they
 are the College's content, curated by the advisor, not demo state that
@@ -113,6 +114,8 @@ def main() -> int:
         return status
 
     ok = all([restore(b, documents=args.documents) for b in targets])
+    if ok:
+        shutil.rmtree(config.CERTIFICATES_DIR, ignore_errors=True)
     if args.documents and ok:
         clear_uploads()
     return 0 if ok else 1

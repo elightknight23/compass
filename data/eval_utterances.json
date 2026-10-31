@@ -82,7 +82,7 @@
   {
     "utterance": "I want casual leave from November 23 to 25 for a family function",
     "expected": "request_od_leave",
-    "trap": "literal dates"
+    "trap": "literal dates; personal leave is still a leave REQUEST (Python refuses it)"
   },
   {
     "utterance": "Put in OD for the placement drive on Friday",
@@ -318,5 +318,25 @@
     "utterance": "I need leave on the day after Deepavali",
     "expected": "request_od_leave",
     "trap": "TRAP: a festival named, but this APPLIES for leave"
+  },
+  {
+    "utterance": "My father met with an accident, I need leave for the rest of the week",
+    "expected": "request_od_leave",
+    "trap": "family emergency, no 'leave' kind named"
+  },
+  {
+    "utterance": "I was down with fever on Wednesday and Thursday, can you put in medical leave",
+    "expected": "request_od_leave",
+    "trap": "past days: leave already taken"
+  },
+  {
+    "utterance": "Apply for leave on Monday, it's my cousin's wedding",
+    "expected": "request_od_leave",
+    "trap": "personal leave: classified as a request; Python refuses it"
+  },
+  {
+    "utterance": "Is casual leave allowed here?",
+    "expected": "document_question",
+    "trap": "asks what the policy SAYS, applies for nothing"
   }
 ]

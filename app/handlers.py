@@ -22,9 +22,9 @@ Three rules hold across every handler in this file:
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
-from . import attendance, auth, backends, clock, dates, llm, rag, users
+from . import attendance, auth, backends, clock, config, dates, llm, rag, users
 from .backends import COMPLAINT, OD_REQUEST
 from .state import AgentState
 
@@ -122,7 +122,11 @@ AMENDABLE = {COMPLAINT: ("priority", "category"), OD_REQUEST: ("reason",)}
 
 TYPE_NAMES = {COMPLAINT: "a facility complaint", OD_REQUEST: "a leave request"}
 TYPE_PLURAL = {COMPLAINT: "facility complaints", OD_REQUEST: "OD and leave requests"}
-LEAVE_NAMES = {"od": "OD", "medical": "medical leave", "casual": "casual leave"}
+LEAVE_NAMES = {"od": "OD", "medical": "medical leave",
+               "family_emergency": "family-emergency leave"}
+# Leave that may be applied for after the days have gone: illness and
+# emergencies are not planned. OD is applied for before the event.
+BACKDATABLE = {"medical", "family_emergency"}
 
 # Which staff role owns each record type, and what to call them out loud.
 OWNING_ROLE = {COMPLAINT: "hostel_warden", OD_REQUEST: "faculty_advisor"}
@@ -849,6 +853,13 @@ def _projection_sentence(proj: attendance.Projection, kind: str) -> str:
     days = _days(proj.working_days, capital=True)
     what = LEAVE_NAMES[kind]
 
+    if proj.working_days == 0:
+        # All the days are behind us, so already counted as absences.
+        tail = (f" You are below the {need} requirement, so the advisor will "
+                "need to approve it as an exception." if proj.below_threshold else "")
+        return (f"Those days are already in your attendance as absences, so this "
+                f"doesn't change your **{now}** — approval records them as "
+                f"authorised {what}.{tail}")
     if proj.condoned:
         lead = (
             f"You are at **{now}**. {what} counts as present, so {days.lower()} "
@@ -885,9 +896,20 @@ def handle_request_od_leave(state: AgentState) -> dict:
     # Asked for, never guessed: whether the days are condoned depends on it.
     if not kind:
         return _out(
-            "Is this OD (a college event, sports, a symposium), medical leave, "
-            "or casual leave? It matters — only OD counts as present.",
+            "Is this OD (a college event, sports, a symposium), medical leave "
+            "(illness or injury), or a family emergency? Those are the only "
+            "kinds of leave the College grants, and only OD counts as present.",
             outcome="needs_leave_kind",
+        )
+    # Heard, then refused here — in Python, from the policy, not by the model.
+    if kind not in backends.LEAVE_KINDS:
+        return _out(
+            "The College grants leave only for illness (medical leave, with a "
+            "certificate) or a family emergency — leave for personal reasons, "
+            "like a family function or a trip home, isn't granted, so I haven't "
+            "submitted anything. If it's a College event, it may count as OD. "
+            "*(OD and Leave Policy › Leave That Is Not Granted)*",
+            outcome="leave_not_granted", authz="allowed", leave_kind=kind,
         )
     if not raw_start:
         return _out(
@@ -910,12 +932,23 @@ def handle_request_od_leave(state: AgentState) -> dict:
             "Which dates did you mean?",
             outcome="bad_dates",
         )
-    if start < clock.today():
-        return _out(
-            f"{_day(start)} is in the past, so I can't apply for it. If you were "
-            "absent unexpectedly, speak to your faculty advisor about it.",
-            outcome="past_dates",
-        )
+    today = clock.today()
+    if start < today:
+        window = config.LEAVE_BACKDATE_DAYS
+        if kind not in BACKDATABLE:
+            return _out(
+                f"{_day(start)} is in the past, and OD has to be applied for "
+                "before the event. If you were absent unexpectedly, speak to your "
+                "faculty advisor about it.",
+                outcome="past_dates",
+            )
+        if (today - start).days > window:
+            return _out(
+                f"{_day(start)} is more than {window} days ago, which is the limit "
+                f"for applying for {LEAVE_NAMES[kind]} afterwards. Speak to your "
+                "faculty advisor about it.",
+                outcome="past_dates",
+            )
 
     # The student's own year: a holiday some years get and others don't
     # (a first-year-only break) must count for exactly the right people.
@@ -950,10 +983,22 @@ def handle_request_od_leave(state: AgentState) -> dict:
             error=att["error"], outcome="read_failed", **trace,
         )
 
+    # Days already gone are already in the attendance figures, as absences
+    # (attendance is recorded up to yesterday). Adding them again would
+    # count every missed period twice; only the days still to come move it.
+    if start >= today:
+        ahead = working
+    elif end < today:
+        ahead = 0
+    else:
+        ahead = dates.working_days(today, end, hols)
+    if ahead != working:
+        trace["already_counted_days"] = working - ahead
+
     proj = None
     if att["data"] is not None:
         proj = attendance.project(
-            att["data"]["attended"], att["data"]["held"], working,
+            att["data"]["attended"], att["data"]["held"], ahead,
             condoned=attendance.is_condoned(kind),
         )
         trace["attendance"] = proj.as_dict()
@@ -1002,11 +1047,22 @@ def handle_request_od_leave(state: AgentState) -> dict:
         else "I couldn't find your attendance on file, so the advisor will "
         "need to check it by hand."
     )
+    if 0 < ahead < working:
+        gone = working - ahead
+        body += (f" ({_days(gone, capital=True)} already gone "
+                 f"{'is' if gone == 1 else 'are'} in your attendance already, "
+                 "so only the rest is counted here.)")
+    needs_certificate = kind == "medical"
+    if needs_certificate:
+        body += ("\n\n**Attach your medical certificate** (PDF or a photo) — your "
+                 "advisor can't approve medical leave without one. Only you and "
+                 "your advisor can see it.")
     return _out(
         f"{head}\n\n{body}",
         backend=res.get("backend", backend.name),
         record_id=r["id"],
         needs_exception=needs_exception,
+        attach_certificate=r["id"] if needs_certificate else None,
         authz="allowed",
         outcome="created",
         **trace,
@@ -1116,6 +1172,18 @@ def apply_staff_action(
             outcome="terminal_state",
             authz="allowed",
             status=record["status"],
+        )
+
+    # Medical leave is granted on a certificate. Without one there is
+    # nothing for the advisor to approve — rejecting or cancelling is fine.
+    if action == "approve" and record.get("leave_kind") == "medical" and not record.get("certificate"):
+        return backends.fail(
+            f"{record['id']} is medical leave with no certificate attached yet, so "
+            "it can't be approved. The student can attach one from their records "
+            "or in chat.",
+            backends.INVALID,
+            outcome="needs_certificate",
+            authz="allowed",
         )
 
     # The exception gate. The system flagged the shortfall; only a person
@@ -1292,7 +1360,8 @@ def handle_staff_action(state: AgentState) -> dict:
                 "or reject it.",
                 **trace,
             )
-        if outcome in {"wrong_action_for_type", "not_authorized", "terminal_state"}:
+        if outcome in {"wrong_action_for_type", "not_authorized", "terminal_state",
+                       "needs_certificate"}:
             return _out(res["error"], **trace)  # already a complete sentence
         return _out(
             f"I couldn't {action} {record_id} ({res['error']}). Its status is "

@@ -130,6 +130,13 @@ class Classification(BaseModel):
             "an end day: 'three days off'=3. Null if an end weekday is given."
         ),
     )
+    in_past: bool = Field(
+        default=False,
+        description=(
+            "True when the user describes days already gone: 'I was sick on "
+            "Monday', 'I missed yesterday', 'I've been ill since Tuesday'."
+        ),
+    )
     category: Literal["hostel", "lab", "library", "transport"] | None = Field(
         default=None,
         description=(
@@ -137,12 +144,14 @@ class Classification(BaseModel):
             "in the hostel), lab, library, transport (college buses)."
         ),
     )
-    leave_kind: Literal["od", "medical", "casual"] | None = Field(
+    leave_kind: Literal["od", "medical", "family_emergency", "personal"] | None = Field(
         default=None,
         description=(
             "od = on-duty (college-sanctioned: symposiums, sports, NSS, "
-            "placement drives); medical = illness; casual = personal. Null "
-            "if the user did not say which."
+            "placement drives); medical = illness or injury; family_emergency "
+            "= a serious emergency in the family (bereavement, a relative in "
+            "hospital); personal = anything else (a family function, a "
+            "wedding, a trip home, 'casual leave'). Null if the user did not say."
         ),
     )
     reason: str | None = Field(
@@ -274,7 +283,9 @@ cancel_record       - WITHDRAWS the user's OWN complaint or leave request.
 check_status        - asks about an EXISTING record's state, theirs or someone's.
                       "Status of OD-2001?", "Any update on my complaints?"
                       Also: "what's my attendance?"
-request_od_leave    - applies for OD, medical or casual leave for themselves.
+request_od_leave    - applies for OD, medical, family-emergency or any other leave
+                      for themselves, including leave already taken ("I was sick
+                      yesterday").
                       "I need OD next Monday to Wednesday for a symposium",
                       "Apply for medical leave tomorrow"
 staff_action        - asks to approve/reject/resolve a record, usually another
@@ -329,7 +340,9 @@ Rules:
   high, "no rush" = low. Leave it null when they say nothing; the default is
   code's to choose.
 - leave_kind: "OD", "on duty", a college event, sports, a symposium, a
-  placement drive = od. Illness, hospital = medical. Personal reasons = casual.
+  placement drive = od. The student's own illness or injury = medical. A
+  bereavement or a family member in hospital = family_emergency. A family
+  function, a wedding, travel, "casual leave", "personal reasons" = personal.
   Null if unclear — do not guess.
 - If this message only COMPLETES an earlier request — answering a question
   Compass just asked, like "OD" or "hostel" — classify it as that earlier
@@ -342,6 +355,12 @@ Rules:
 - Dates: DO NOT do calendar arithmetic. Report the parts you heard and let
   the code compute the dates. You are reliably wrong at this; the code is not.
     "I need tomorrow off"          -> day_offset=1
+    "I was sick yesterday"         -> day_offset=-1, in_past=true
+    "I was ill on Monday and Tuesday"
+                                   -> anchor_weekday=monday, week_offset=0,
+                                      end_weekday=tuesday, in_past=true
+    "I missed last Thursday"       -> anchor_weekday=thursday, week_offset=-1,
+                                      in_past=true
     "next Monday through Wednesday" -> anchor_weekday=monday, week_offset=1,
                                        end_weekday=wednesday
     "Monday through Friday, four weeks from now"
@@ -411,6 +430,7 @@ def classify(state: AgentState) -> dict:
         week_offset=result.week_offset,
         end_weekday=result.end_weekday,
         duration_weekdays=result.duration_weekdays,
+        past=result.in_past,
     )
     # "three days starting Tuesday" counts working days, so it needs the
     # asker's holidays: a student's year decides which ones apply.
