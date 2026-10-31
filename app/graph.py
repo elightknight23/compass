@@ -287,7 +287,9 @@ request_od_leave    - applies for OD, medical, family-emergency or any other lea
                       for themselves, including leave already taken ("I was sick
                       yesterday").
                       "I need OD next Monday to Wednesday for a symposium",
-                      "Apply for medical leave tomorrow"
+                      "Apply for medical leave tomorrow",
+                      "My grandmother is in hospital, I need leave tomorrow"
+                      (a family emergency: apply, don't ask which kind)
 staff_action        - asks to approve/reject/resolve a record, usually another
                       person's, or to close one because the work is DONE.
                       Classify on what is ASKED, never on whether the user is

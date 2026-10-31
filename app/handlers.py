@@ -22,6 +22,7 @@ Three rules hold across every handler in this file:
 
 from __future__ import annotations
 
+import re
 from datetime import date, timedelta
 
 from . import attendance, auth, backends, clock, config, dates, llm, rag, users
@@ -1276,6 +1277,16 @@ def _find_target_record(name: str | None, action: str) -> tuple[str | None, str 
     return max(candidates, key=_recency_key)["id"], None
 
 
+_RECORD_ID_RE = re.compile(r"\b(?:OD|CMP)-\d{4}\b", re.I)
+
+
+def _record_in_last_reply(history: list[dict]) -> str | None:
+    """The one record id in Compass's most recent reply, if it named one."""
+    last = next((t for t in reversed(history) if t.get("role") == "assistant"), None)
+    ids = {m.upper() for m in _RECORD_ID_RE.findall((last or {}).get("content") or "")}
+    return ids.pop() if len(ids) == 1 else None
+
+
 def handle_staff_action(state: AgentState) -> dict:
     user = state["user"]
     if not user:
@@ -1328,6 +1339,13 @@ def handle_staff_action(state: AgentState) -> dict:
         record_id, problem = _find_target_record(entities.get("target_person"), action)
         if problem:
             return _out(problem, authz="allowed", outcome="needs_target")
+        if record_id is None and entities.get("grant_exception"):
+            # "Yes, approve it as an exception" answers the question Compass
+            # just asked about one record. The model often fails to carry the
+            # id across the turn, so Python reads it from that reply — only
+            # when it named exactly one. Whose record it is, and whether this
+            # caller may approve it, are still apply_staff_action's to decide.
+            record_id = _record_in_last_reply(state.get("history") or [])
         if record_id is None:
             return _out(
                 "Which request should I action? Give me the ID (like OD-2001) "

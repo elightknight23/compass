@@ -298,12 +298,12 @@ Refusals stay distinguishable, in chat and over HTTP:
 ## Testing and evaluation
 
 ```bash
-bash scripts/run_tests.sh       # 620 checks, no model, no network, ~2 min
+bash scripts/run_tests.sh       # 624 checks, no model, no network, ~2 min
 ```
 
 | Suite | Checks | Exercises |
 | :--- | ---: | :--- |
-| `test_staff_lookup.py` | 57 | the full 3 roles × 2 types × 4 verbs matrix; every refusal leaves the record unmoved |
+| `test_staff_lookup.py` | 61 | the full 3 roles × 2 types × 4 verbs matrix; every refusal leaves the record unmoved |
 | `test_auth.py` | 63 | sessions, forged headers, scoped queues, refused POSTs asserted as 403 **and** an unchanged row, the SSE stream |
 | `test_backends.py` | 130 | one protocol suite (records, documents, calendar events) against JSON, SQLite and a real Postgres test database |
 | `test_documents.py` | 133 | extraction from real PDFs/DOCX, both syllabus layouts, every calendar date shape, the upload API by role, filtered retrieval, holidays in force |
@@ -355,10 +355,10 @@ An unnamed limitation is the one that bites during questions.
   text — use a private repository.
 - **Saturday working days** ("Saturday working, Monday order") are listed but
   not added to the working-day count. Only holidays subtract.
-- **The fallback model is weaker at follow-ups.** The acceptance row where
-  "Yes, approve it as an exception" must carry the student forward passes on
-  the primary model and fails when the rate-limited run spills onto the
-  fallback.
+- **Follow-ups lean on a 6-turn window.** "Yes, approve it as an exception"
+  used to fail whenever the model didn't carry the record across the turn;
+  now Python takes the id from Compass's own previous reply, but only for that
+  explicit confirmation, and only when the reply named exactly one record.
 - **Attendance is seeded, not synced.** There is no ERP integration. A CSV
   import is the honest interim.
 - **One facility role.** The hostel warden resolves all facility complaints,

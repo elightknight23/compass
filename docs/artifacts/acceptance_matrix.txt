@@ -46,11 +46,12 @@ providers = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']
       ok   authz='allowed'
       ok   matched ['submitted']
 
-  [PASS] #4b  Ravi Kumar             "What's my attendance right now?"
+  [FAIL] #4b  Ravi Kumar             "What's my attendance right now?"
         attendance figure computed by attendance.py, not the model
-      ok   intent='check_status'
-      ok   matched ['76.2%']
-      ok   matched ['457']
+      FAIL intent='clarify'
+      FAIL none of ['76.2%']
+      FAIL none of ['457']
+      reply: I can show you your current attendance percentage, or explain how applying for pending OD or leave requests might affect it. Could you please provide your student ID so I can look up your specific records?
 
   [PASS] #5   Ravi Kumar             "What's Arjun's attendance?"
         a student may not read another student's records
@@ -67,8 +68,8 @@ providers = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']
       ok   matched ['counts as present']
       ok   matched ['Founders']
 
-  [PASS] #7   Ravi Kumar             "Apply for casual leave next Monday to Wednesday, family function"
-        the domain change: 76.2% -> 73.9%, flagged for an exception, NOT refused
+  [PASS] #7   Ravi Kumar             "I've got a bad fever, apply for medical leave next Monday to Wednesday"
+        the domain change: 76.2% -> 73.9%, flagged for an exception, NOT refused; and the certificate is asked for
       ok   intent='request_od_leave'
       ok   outcome='created'
       ok   working_days=3
@@ -76,6 +77,29 @@ providers = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']
       ok   matched ['76.2%']
       ok   matched ['73.9%']
       ok   matched ['exception']
+      ok   matched ['medical certificate']
+
+  [PASS] #7b  Ravi Kumar             "Apply for casual leave next Monday to Wednesday, family function"
+        only medical and family-emergency leave (and OD) are granted: refused in Python
+      ok   intent='request_od_leave'
+      ok   outcome='leave_not_granted'
+      ok   matched ["isn't granted"]
+      ok   absent: ['OD-20']
+
+  [PASS] #7c  Ravi Kumar             "I was sick yesterday, please apply medical leave for it"
+        medical leave after the fact: accepted, and the day isn't counted twice
+      ok   intent='request_od_leave'
+      ok   outcome='created'
+      ok   working_days=1
+      ok   already_counted_days=1
+      ok   matched ["doesn't change"]
+
+  [PASS] #7d  Arjun Menon            "My grandmother has been admitted to hospital, I need leave on Monday"
+        a family emergency is its own kind of leave, and needs no certificate
+      ok   intent='request_od_leave'
+      ok   outcome='created'
+      ok   matched ['family-emergency leave']
+      ok   absent: ['certificate']
 
   [PASS] #8   Dr. Lakshmi Narayanan  "Approve Ravi's OD request"
         the advisor owns leave: allowed
@@ -103,17 +127,16 @@ providers = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']
       ok   matched ['resolved']
       ok   absent: ['approved']
 
-  [FAIL] #8d  Dr. Lakshmi Narayanan  "Approve Arjun's leave request"
+  [PASS] #8d  Dr. Lakshmi Narayanan  "Approve Arjun's leave request"
         a flagged request needs an explicit exception — then gets one
       ok   intent='staff_action'
       ok   outcome='needs_exception_ack'
       ok   matched ['70.9%']
       -- then: "Yes, approve it as an exception"
       ok   intent='staff_action'
-      FAIL exception_granted=None
-      FAIL none of ['exception']
-      FAIL none of ['approved']
-      reply: Which request should I action? Give me the ID (like OD-2001) or the student's name.
+      ok   exception_granted=True
+      ok   matched ['exception']
+      ok   matched ['approved']
 
   [PASS] #9   Ravi Kumar             "Approve my own OD request"
         the same sentence from a STUDENT: refused by an if statement
@@ -130,11 +153,12 @@ providers = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']
       ok   intent='clarify'
       ok   matched ['?']
 
-  [PASS] #14  Ravi Kumar             "What's the recommended textbook for Computer Networks?"
+  [FAIL] #14  Ravi Kumar             "What's the recommended textbook for Computer Networks?"
         syllabus RAG, filtered in Python to the student's branch
       ok   intent='document_question'
-      ok   'Text Books' in retrieved sections
-      ok   matched ['Kurose']
+      FAIL 'Text Books' NOT in retrieved sections
+      FAIL none of ['Kurose']
+      reply: I couldn't reach the language model just now, so I can't answer from the College's documents. Please try again in a minute.
 
   [PASS] #14b Priya Sharma           "What's the recommended textbook for Computer Networks?"
         the same question from ECE: no ECE syllabus -> says so, never CSE's books
@@ -191,6 +215,6 @@ providers = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']
       reply: I couldn't file that complaint — the records system didn't accept it (the database could not be reached (OperationalError)). Nothing was created, so please try again shortly.
 
 ============================================================================
-  26/27 acceptance tests passed   (classified by: gemini-3.5-flash-lite=22, gemini-3.1-flash-lite=4)
-  failing: #8d
+  28/30 acceptance tests passed   (classified by: gemini-3.5-flash-lite=28, none=1)
+  failing: #4b, #14
 ============================================================================

@@ -167,6 +167,36 @@ def main() -> int:
     check('  and "approve it as an exception" approves it',
           backend.get_record("OD-2002")["data"]["status"] == "approved", out["reply"])
 
+    section('chat: "yes, approve it as an exception" with no id or name')
+    backend = sandbox("json")
+    asked = chat(handlers.handle_staff_action, "U102", action="approve", target_person="Arjun")["reply"]
+
+    def follow_up(uid: str, last_reply: str) -> dict:
+        st = new_state("Yes, approve it as an exception", users.get(uid),
+                       history=[{"role": "user", "content": "Approve Arjun's leave request"},
+                                {"role": "assistant", "content": last_reply}])
+        st["entities"] = {"action": "approve", "grant_exception": True}
+        return handlers.handle_staff_action(st)
+
+    out = follow_up("U102", asked)
+    check("the record named in Compass's last reply is the one approved",
+          out["debug"].get("record_id") == "OD-2002"
+          and backend.get_record("OD-2002")["data"]["status"] == "approved", out["reply"])
+    backend = sandbox("json")
+    out = follow_up("U101", asked)
+    check("  and it widens nothing: the warden is still refused",
+          out["debug"].get("authz") == "denied"
+          and backend.get_record("OD-2002")["data"]["status"] == "submitted", out["reply"])
+    out = follow_up("U102", "OD-2001 and OD-2002 are both waiting.")
+    check("two ids in the last reply: it asks, rather than picking one",
+          out["debug"].get("outcome") == "needs_target")
+    st = new_state("approve it", users.get("U102"),
+                   history=[{"role": "assistant", "content": asked}])
+    st["entities"] = {"action": "approve"}
+    out = handlers.handle_staff_action(st)
+    check("without an explicit exception, no id is taken from the conversation",
+          out["debug"].get("outcome") == "needs_target")
+
     section("chat: reading other people's records")
     sandbox("json")
     out = chat(handlers.handle_check_status, "U101", target_person="Arjun")
