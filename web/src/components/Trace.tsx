@@ -30,11 +30,18 @@ function heardPhrase(h: Record<string, unknown>): string {
   const parts: string[] = [];
   if (h.explicit_start) parts.push(String(h.explicit_start) + (h.explicit_end ? ` → ${h.explicit_end}` : ""));
   if (typeof h.day_offset === "number")
-    parts.push(h.day_offset === 0 ? "today" : h.day_offset === 1 ? "tomorrow" : `+${h.day_offset} days`);
+    parts.push(
+      h.day_offset === 0 ? "today" : h.day_offset === 1 ? "tomorrow" : h.day_offset === -1 ? "yesterday"
+        : `${h.day_offset > 0 ? "+" : ""}${h.day_offset} days`,
+    );
   if (h.anchor_weekday) parts.push(String(h.anchor_weekday));
   if (typeof h.week_offset === "number")
-    parts.push(h.week_offset === 0 ? "this week" : `+${h.week_offset} week${h.week_offset === 1 ? "" : "s"}`);
+    parts.push(
+      h.week_offset === 0 ? "this week" : h.week_offset === -1 ? "last week"
+        : `${h.week_offset > 0 ? "+" : ""}${h.week_offset} week${Math.abs(h.week_offset) === 1 ? "" : "s"}`,
+    );
   if (h.end_weekday) parts.push(`through ${h.end_weekday}`);
+  if (h.past) parts.push("in the past");
   if (h.duration_weekdays) parts.push(`${h.duration_weekdays} working day${h.duration_weekdays === 1 ? "" : "s"}`);
   return parts.join(" · ") || "—";
 }

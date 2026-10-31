@@ -29,7 +29,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
-  me: () => request<{ user: User }>("/api/me"),
+  me: () => request<{ user: User; today: string }>("/api/me"),
   login: (username: string, password: string) =>
     request<{ user: User }>("/api/login", {
       method: "POST",
@@ -52,6 +52,13 @@ export const api = {
       scope: string[];
       errors: string[];
     }>("/api/queue"),
+  attachCertificate: (id: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<{ outcome: string; record: CampusRecord }>(
+      `/api/records/${encodeURIComponent(id)}/certificate`, { method: "POST", body: form },
+    );
+  },
   act: (id: string, action: string, grantException = false) =>
     request<{ record: CampusRecord; exception_granted: boolean }>(
       `/api/records/${encodeURIComponent(id)}/action`,
@@ -87,6 +94,7 @@ export const api = {
 };
 
 export const documentFileUrl = (id: string) => `/api/documents/${encodeURIComponent(id)}/file`;
+export const certificateUrl = (id: string) => `/api/records/${encodeURIComponent(id)}/certificate`;
 
 /**
  * One chat turn over Server-Sent Events.

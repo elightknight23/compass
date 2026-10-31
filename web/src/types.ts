@@ -44,15 +44,35 @@ export interface CampusRecord {
   notes: string | null;
   category: string | null;
   priority: string | null;
-  leave_kind: "od" | "medical" | "casual" | null;
+  leave_kind: "od" | "medical" | "family_emergency" | null;
   start_date: string | null;
   end_date: string | null;
   working_days: number | null;
   reason: string | null;
   projection: Projection | null;
   needs_exception: boolean | null;
+  // Medical leave. Someone who may not open the certificate gets only
+  // {attached: true} — no filename (app/certificates.public).
+  certificate: Certificate | null;
+  // A facility complaint's mirrored issue, when the tracker is configured.
+  tracker: TrackerState | null;
   decided_by: string | null;
   decided_at: string | null;
+}
+
+export interface Certificate {
+  attached?: boolean;
+  filename?: string;
+  content_type?: string;
+  size?: number;
+  uploaded_at?: string;
+}
+
+export interface TrackerState {
+  issue?: number;
+  url?: string | null;
+  synced?: boolean;
+  error?: string | null;
 }
 
 export interface RecordEvent {
@@ -119,6 +139,8 @@ export interface Trace {
     year?: number;
   };
   holiday_calendar?: "calendar" | "seed" | "none";
+  // request_od_leave, medical: the record that is waiting for its certificate
+  attach_certificate?: string;
   [key: string]: unknown;
 }
 

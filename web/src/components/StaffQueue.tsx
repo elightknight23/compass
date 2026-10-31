@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, ApiError } from "../api";
-import { isOpen, pct, rulePct } from "../format";
+import { firstName, isOpen, pct, rulePct } from "../format";
 import type { CampusRecord, Projection, User } from "../types";
 import { RecordCard } from "./Records";
 
@@ -123,12 +123,11 @@ export function StaffQueue({ user, refreshKey }: { user: User; refreshKey: numbe
   return (
     <div className="queue">
       <div className="queue-head">
-        <div>
-          <div className="muted small">
-            Showing {scopeName} — the records {user.name} can act on. Other records are readable from
-            chat, but they are someone else's inbox.
-          </div>
-        </div>
+        <p className="lede muted">
+          {scopeName ? scopeName[0].toUpperCase() + scopeName.slice(1) : "Records"} — the ones you can act
+          on, {firstName(user.name)}.
+          Anything else is readable from chat, but it's someone else's inbox.
+        </p>
         <div className="seg">
           <button className={filter === "open" ? "on" : ""} onClick={() => setFilter("open")}>
             Needs action <span className="count">{openCount}</span>
@@ -150,11 +149,15 @@ export function StaffQueue({ user, refreshKey }: { user: User; refreshKey: numbe
             users={data.users}
             actions={
               isOpen(r) &&
-              (ACTIONS[r.type] ?? []).map((a) => (
+              (ACTIONS[r.type] ?? []).map((a) => {
+                // A courtesy: the server refuses this too (needs_certificate).
+                const noCert = a.verb === "approve" && r.leave_kind === "medical" && !r.certificate;
+                return (
                 <button
                   key={a.verb}
                   className={`btn small ${a.tone ?? ""}`}
-                  disabled={busy !== null}
+                  disabled={busy !== null || noCert}
+                  title={noCert ? "Medical leave can't be approved until the student attaches a certificate" : undefined}
                   onClick={() =>
                     a.verb === "approve" && r.needs_exception
                       ? setPending({ record: r, projection: r.projection, student: data.users[r.user_id] })
@@ -163,7 +166,8 @@ export function StaffQueue({ user, refreshKey }: { user: User; refreshKey: numbe
                 >
                   {busy === r.id + a.verb ? "…" : a.label}
                 </button>
-              ))
+                );
+              })
             }
           />
         ))}

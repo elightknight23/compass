@@ -25,7 +25,7 @@ export function span(r: CampusRecord): string {
 export const LEAVE_NAMES: Record<string, string> = {
   od: "OD",
   medical: "Medical leave",
-  casual: "Casual leave",
+  family_emergency: "Family emergency",
 };
 
 export const ROLE_NAMES: Record<string, string> = {
@@ -47,6 +47,15 @@ export function statusTone(status: string): "ok" | "deny" | "warn" | "muted" {
   if (["rejected"].includes(status)) return "deny";
   if (OPEN.has(status)) return "warn";
   return "muted"; // cancelled, withdrawn
+}
+
+export function firstName(name: string): string {
+  return name.replace(/^Dr\.\s*/, "").split(" ")[0];
+}
+
+/** "Saturday, 31 October", for an ISO date — pass the server's today. */
+export function longDay(iso: string): string {
+  return new Date(iso + "T00:00:00").toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" });
 }
 
 export function initials(name: string): string {

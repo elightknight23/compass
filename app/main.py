@@ -162,7 +162,9 @@ def logout(response: Response):
 
 @app.get("/api/me")
 def me(user: dict = Depends(require_user)):
-    return {"user": public_user(user)}
+    # The server's today (I8), so the browser never shows a different date
+    # from the one every answer was computed against.
+    return {"user": public_user(user), "today": clock.today().isoformat()}
 
 
 @app.get("/api/users")
