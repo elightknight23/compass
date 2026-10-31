@@ -33,8 +33,8 @@ instruction to a language model.
 | :--- | :--- |
 | `document_question` | Answered from the College's documents (built-in regulations, uploaded syllabi and calendars) via RAG, with section-level citations, filtered to the asker's branch and semester |
 | `calendar_question` | *When* is the next holiday, which exams are next week, is there college on Friday: Python over the confirmed calendar, never the model reading dates |
-| `file_complaint` | Opens a facility complaint: hostel, lab, library or transport |
-| `request_od_leave` | Resolves the dates in Python, counts working days against the holiday calendar, projects attendance, and submits |
+| `file_complaint` | Opens a facility complaint: hostel, lab, library or transport, mirrored to a GitHub issue when configured |
+| `request_od_leave` | OD, medical or family-emergency leave (nothing else is granted). Resolves the dates in Python, counts working days against the holiday calendar, projects attendance, and submits; medical leave then asks for a certificate |
 | `check_status` | Your records and attendance always; anyone's if you are staff |
 | `amend_record` | Changes priority or category of your own complaint, or the reason on your own leave request |
 | `cancel_record` | Withdraws your own complaint or leave request |
@@ -58,7 +58,7 @@ Two consequences are the point:
 
 1. **OD can raise a percentage.** Condoned days count as present. Ravi is at
    76.2%; three days of OD take him to 76.9%.
-2. **The system informs; a human decides.** Three days of casual leave take
+2. **The system informs; a human decides.** Three days of medical leave take
    Ravi to 73.9%, below 75%. The request is **created anyway**, flagged, and
    the advisor must explicitly grant an exception to approve it. An agent
    that silently refuses a legitimate request is worse than one that
@@ -72,10 +72,15 @@ formula against the seeded attendance.
 The faculty advisor uploads PDFs (or Word, Markdown, text) on the
 **Documents** page. Two kinds matter most:
 
-- **Syllabus.** The normaliser recognises the usual university layout
-  (`SEMESTER V`, course codes such as `CS3591` or `21CS51`, `UNIT I`,
-  `TEXT BOOKS`, `REFERENCES`), so the chunk listing a course's books is headed
-  *CSE Syllabus › Semester 5 › CS3591 Computer Networks › Text Books*. Every
+- **Syllabus.** The normaliser knows two layouts. The NIT one is a page per
+  course: `CS1305 3-0-0 (3)` with the title on the next line, books under
+  *Learning Resources: Text Books*, and electives, minors and honours as
+  their own groups after the last semester. The other is the Anna
+  University / VTU one (`SEMESTER V`, `CS3591` or `21CS51`, `UNIT I`,
+  `TEXT BOOKS`). Running headers, page footers and the CO-PO matrix are
+  dropped. Either way, the chunk listing a course's books is headed
+  *CSE Curriculum › Semester 5 › CS1305 Computer Networks › Text Books*.
+  Tested on the department's 171-page curriculum: 112 courses. Every
   chunk carries its branch and semester. When Ravi (CSE, semester 5) asks for
   "the textbook for Computer Networks", Python builds the filter from his
   profile. An ECE student asking the same thing gets *"No syllabus for ECE has
@@ -95,6 +100,45 @@ every student's assistant, so it's a write into everyone's answers. Uploaded
 text gets the same injection defence as the regulations: the red-team script
 plants an instruction inside a syllabus PDF and checks it's quoted, not
 obeyed.
+
+### Leave: what the College grants
+
+Three kinds, and nothing else: **OD**, **medical leave** and **family
+emergency**. The classifier reports what it heard. A family function or
+a trip home comes back as `personal`, and Python refuses it, citing the
+policy, without creating anything.
+
+- **After the fact.** Medical and family-emergency leave can be applied for
+  up to 7 days after the first day (`LEAVE_BACKDATE_DAYS`); OD cannot. Days
+  already gone are already in the attendance figures as absences, so the
+  projection adds only the days still to come.
+- **The certificate.** Medical leave asks for one (PDF or a photo), right in
+  the chat reply or on *My requests*. Only the student can attach it, while
+  the request is undecided. Only the student and whoever decides the leave can
+  open it. The warden, who can read every record, sees only "certificate
+  attached", without even the filename. The advisor can't approve medical leave
+  without one (409 `needs_certificate`). The certificate is read by a person,
+  not a model: free-tier model inputs may be used by the provider, and a
+  model's opinion that a document looks genuine is not evidence.
+
+### Complaints on GitHub Issues
+
+Set `GITHUB_REPO` and a fine-grained `GITHUB_TOKEN` (Issues: read and write,
+on one **private** repository) and every facility complaint is also an
+issue there:
+
+- **Labels and state.** Each issue is labelled `compass`,
+  `category:hostel`, `priority:high` and so on. It closes as *completed* when
+  resolved and *not planned* when withdrawn.
+- **Body.** It holds the complaint and its history by role (never by name).
+- **Link back.** The record shows a link to its issue.
+
+The mirror is **one-way**. Compass decides, where the role checks are; closing
+the issue on GitHub changes nothing here. A complaint is saved first and the
+issue follows on a background thread, so GitHub being slow or down never
+stops a student. The record says it is out of step, and a retry loop
+(startup, then every 5 minutes, or `scripts/sync_tracker.py`) catches it up
+without duplicates. Leave is never mirrored.
 
 ---
 
@@ -125,6 +169,9 @@ docker compose up -d                            # Postgres 16 on host port 5433
 .venv/bin/python scripts/seed_db.py
 RECORD_BACKEND=postgres .venv/bin/python -m uvicorn app.main:app --port 8000
 ```
+
+Re-run `seed_db.py` after pulling a change to `app/models.py` (it drops and
+recreates the tables; uploaded documents are kept with `reset_demo.py`).
 
 If the database is unreachable during a demo, `RECORD_BACKEND=json` and a
 restart is the whole recovery. Both backends satisfy the same protocol and are
@@ -251,7 +298,7 @@ Refusals stay distinguishable, in chat and over HTTP:
 ## Testing and evaluation
 
 ```bash
-bash scripts/run_tests.sh       # 543 checks, no model, no network, ~90 s
+bash scripts/run_tests.sh       # 620 checks, no model, no network, ~2 min
 ```
 
 | Suite | Checks | Exercises |
@@ -259,8 +306,10 @@ bash scripts/run_tests.sh       # 543 checks, no model, no network, ~90 s
 | `test_staff_lookup.py` | 57 | the full 3 roles × 2 types × 4 verbs matrix; every refusal leaves the record unmoved |
 | `test_auth.py` | 63 | sessions, forged headers, scoped queues, refused POSTs asserted as 403 **and** an unchanged row, the SSE stream |
 | `test_backends.py` | 130 | one protocol suite (records, documents, calendar events) against JSON, SQLite and a real Postgres test database |
-| `test_documents.py` | 120 | extraction from real PDFs/DOCX, syllabus structure, every calendar date shape, the upload API by role, filtered retrieval, holidays in force |
-| `test_attendance.py` | 49 | the projection: OD raises, casual lowers, threshold crossing, held=0, display never contradicts the decision |
+| `test_documents.py` | 133 | extraction from real PDFs/DOCX, both syllabus layouts, every calendar date shape, the upload API by role, filtered retrieval, holidays in force |
+| `test_attendance.py` | 60 | the projection: OD raises, medical lowers, threshold crossing, held=0; which leave is granted; leave already taken is not counted twice |
+| `test_certificates.py` | 27 | who may attach and open a medical certificate, over HTTP; the warden's redacted copy; approval refused without one |
+| `test_tracker.py` | 26 | the GitHub mirror against a fake API: labels, close reasons, no names, GitHub down then back, no duplicates, leave never sent |
 | `test_dates.py` | 36 | calendar arithmetic against a pinned clock, the holiday calendar, blank classifier fields |
 | `test_calendar.py` | 29 | `calendar_question` spans and answers per year of study; `document_question` filters and absence |
 | `test_amend.py` | 25 | amend and cancel, ownership, "the most recent open one" |
@@ -268,14 +317,15 @@ bash scripts/run_tests.sh       # 543 checks, no model, no network, ~90 s
 | `test_rag.py` | 16 | chunking, stale-index detection (content and format), the planted-injection guard |
 
 Every suite runs against a throwaway copy of the seed data and blanks the
-model keys first, so none of them can touch the demo store or the network.
+model key and the GitHub settings first, so none of them can touch the demo
+store, the network or a real repository.
 
 The harnesses that need a model, with outputs saved to `docs/artifacts/`:
 
 | Harness | Produces |
 | :--- | :--- |
-| `run_acceptance.py` | 27 end-to-end rows through the real graph (uploaded syllabus and confirmed calendar included), plus a dead-database drill |
-| `eval_intents.py --both` | accuracy and a confusion matrix over 58 labelled utterances, against a deliberately thin baseline prompt |
+| `run_acceptance.py` | 30 end-to-end rows through the real graph (uploaded syllabus and confirmed calendar included), plus a dead-database drill |
+| `eval_intents.py --both` | accuracy and a confusion matrix over 62 labelled utterances, against a deliberately thin baseline prompt |
 | `redteam_injection.py` | two planted injections: a circular in the regulations, a "system notice" in an uploaded syllabus |
 | `compare_chunking.py` | naive versus structure-aware retrieval on a question built to straddle a heading |
 
@@ -295,9 +345,14 @@ An unnamed limitation is the one that bites during questions.
   page; replace `docs/regulations/` with the real rules and re-index.
 - **No OCR.** A scanned PDF (no text layer) is refused with a reason, not
   indexed as nothing. Upload the original digital PDF or a Word file.
-- **The parsers know one layout family**: Anna University-style and
-  VTU-style course codes, day-first dates. A college whose documents look
-  different needs the patterns in `app/documents.py` adjusted.
+- **The parsers know two syllabus layouts** (NIT-style course pages, and
+  Anna University / VTU-style) and day-first dates. Other layouts need the
+  patterns in `app/documents.py` adjusted. Minor, honours and open-elective
+  courses are filed under no semester, so a semester filter includes them.
+- **Certificates are not verified.** Compass checks the file type, not
+  whether the certificate is genuine; the advisor reads it.
+- **The GitHub mirror is one-way**, and the issue body holds the complaint's
+  text — use a private repository.
 - **Saturday working days** ("Saturday working, Monday order") are listed but
   not added to the working-day count. Only holidays subtract.
 - **The fallback model is weaker at follow-ups.** The acceptance row where
