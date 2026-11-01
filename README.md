@@ -330,7 +330,9 @@ The harnesses that need a model, with outputs saved to `docs/artifacts/`:
 | `compare_chunking.py` | naive versus structure-aware retrieval on a question built to straddle a heading |
 
 How to read the intent score: report it as a **range** across runs.
-Temperature 0 is not determinism. The eval set and the prompt share an
+On the 62-utterance set the shipping prompt scored 61/62 (31 Oct 2026) and
+62/62 (1 Nov), the thin baseline 58/62; the saved run is in
+`docs/artifacts/eval_matrix.txt`. Temperature 0 is not determinism. The eval set and the prompt share an
 author, so the figure measures self-consistency, not resilience to
 strangers.
 
