@@ -198,7 +198,7 @@ export function RecordCard({
         <button className="link" onClick={() => setExpanded((x) => !x)}>
           {expanded ? "hide history" : "history"}
         </button>
-        {actions}
+        {actions && <span className="record-actions">{actions}</span>}
       </div>
       {expanded && <History id={r.id} users={users} />}
     </article>

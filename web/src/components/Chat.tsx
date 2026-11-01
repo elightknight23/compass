@@ -103,8 +103,10 @@ export function Chat({ user, today, onChanged }: { user: User; today: string; on
 
   // Braced on purpose: newer browsers return a Promise from scrollIntoView,
   // and an effect that returns anything but a function crashes on unmount.
+  // An empty conversation stays at the top: on a phone the starters are
+  // taller than the screen, and scrolling would hide the greeting.
   useEffect(() => {
-    end.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    if (turns.length) end.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [turns]);
 
   // The composer grows with what's typed, up to a point.

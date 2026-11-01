@@ -387,6 +387,8 @@ a { color: var(--pine); }
 .record-body { display: grid; gap: 4px; font-size: 0.92rem; }
 .record-body .when { font-weight: 600; }
 .record-foot { border-top: 1px solid var(--rule-2); padding-top: 9px; }
+/* The decisions wrap as one group, never Approve on one line and Reject on the next. */
+.record-actions { display: inline-flex; gap: 7px; flex-wrap: wrap; }
 .proj { font-size: 0.86rem; }
 .proj.below strong { color: var(--brick); }
 .history { margin: 0; padding: 4px 0 0 18px; font-size: 0.8rem; display: grid; gap: 3px; }
@@ -487,6 +489,8 @@ a.src:hover { text-decoration: underline; }
 
 /* ---- phones: a header, and the sections as a tab bar at the bottom ----------------- */
 @media (max-width: 760px) {
+  .record-actions { width: 100%; }
+  .record-actions .btn { flex: 1; }
   .app { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
   .sidebar {
     flex-direction: row; align-items: center; gap: 10px;
