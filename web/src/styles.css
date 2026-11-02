@@ -466,6 +466,18 @@ a.tracker:hover { text-decoration: underline; }
 .review-table tr.off td { opacity: 0.55; }
 .review-table .chip { margin: 4px 4px 0 0; }
 .src-text { font-size: 0.74rem; color: var(--faint); margin-top: 4px; }
+.review-table tr.added td { background: var(--pine-soft); }
+.review-table .remove { color: var(--brick); padding-top: 8px; white-space: nowrap; }
+.add-date { display: flex; flex-wrap: wrap; align-items: end; gap: 8px 10px; padding: 10px 0 4px; }
+.add-date label { display: grid; gap: 4px; font-size: 0.74rem; font-weight: 600; color: var(--muted); }
+.add-date label.grow { flex: 1; min-width: 160px; }
+.add-date input, .add-date select {
+  font-size: 0.86rem; color: var(--ink); background: var(--paper);
+  border: 1px solid var(--rule); border-radius: 8px; padding: 7px 9px; min-width: 0; width: 100%;
+}
+.add-date input[type="date"] { width: 150px; }
+.add-problem { flex-basis: 100%; color: var(--brick); }
+.review-tally { margin: 2px 0 8px; }
 
 .upcoming { margin: 0; }
 .upcoming-list { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 7px; }

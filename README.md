@@ -304,7 +304,7 @@ Refusals stay distinguishable, in chat and over HTTP:
 ## Testing and evaluation
 
 ```bash
-bash scripts/run_tests.sh       # 659 checks, no model, no network, ~2 min
+bash scripts/run_tests.sh       # 668 checks, no model, no network, ~2 min
 ```
 
 | Suite | Checks | Exercises |
@@ -312,7 +312,7 @@ bash scripts/run_tests.sh       # 659 checks, no model, no network, ~2 min
 | `test_staff_lookup.py` | 61 | the full 3 roles × 2 types × 4 verbs matrix; every refusal leaves the record unmoved |
 | `test_auth.py` | 63 | sessions, forged headers, scoped queues, refused POSTs asserted as 403 **and** an unchanged row, the SSE stream |
 | `test_backends.py` | 130 | one protocol suite (records, documents, calendar events) against JSON, SQLite and a real Postgres test database |
-| `test_documents.py` | 153 | extraction from real PDFs/DOCX, both syllabus layouts, every calendar date shape (week grids too), the upload API by role, filtered retrieval, holidays in force |
+| `test_documents.py` | 162 | extraction from real PDFs/DOCX, both syllabus layouts, every calendar date shape (week grids too), adding and removing dates in review, the upload API by role, filtered retrieval, holidays in force |
 | `test_attendance.py` | 60 | the projection: OD raises, medical lowers, threshold crossing, held=0; which leave is granted; leave already taken is not counted twice |
 | `test_certificates.py` | 27 | who may attach and open a medical certificate, over HTTP; the warden's redacted copy; approval refused without one |
 | `test_tracker.py` | 41 | the GitHub mirror against a fake API: labels, close reasons, no names, GitHub down then back, no duplicates, leave without its reason |

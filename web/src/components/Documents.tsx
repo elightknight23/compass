@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { api, ApiError, documentFileUrl } from "../api";
 import { day } from "../format";
+import { Icon } from "./Icon";
 import type { CalendarEvent, CampusDocument, DocType, EventKind } from "../types";
 
 // The College's documents. Everyone sees what their answers can come from;
@@ -136,10 +137,50 @@ function UploadForm({ onUploaded }: { onUploaded: (d: CampusDocument) => void })
   );
 }
 
+// A review row: the event, a key that survives adding and removing rows,
+// and whether the reviewer typed it in rather than the parser reading it.
+type Row = CalendarEvent & { key: number; added?: boolean };
+
+const byDate = (a: Row, b: Row) => (a.start_date ?? "9999").localeCompare(b.start_date ?? "9999");
+
+/** A date the document missed, or one announced later: typed in by the reviewer. */
+function AddDate({ onAdd }: { onAdd: (e: Pick<CalendarEvent, "start_date" | "end_date" | "title" | "kind" | "years">) => void }) {
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [title, setTitle] = useState("");
+  const [kind, setKind] = useState<EventKind>("holiday");
+  const [problem, setProblem] = useState<string | null>(null);
+
+  function add(e: FormEvent) {
+    e.preventDefault();
+    if (!start || !title.trim()) return setProblem("Give it a date and a name.");
+    if (end && end < start) return setProblem("It ends before it starts.");
+    onAdd({ start_date: start, end_date: end || start, title: title.trim(), kind, years: "all" });
+    setStart(""); setEnd(""); setTitle(""); setKind("holiday"); setProblem(null);
+  }
+
+  return (
+    <form className="add-date" onSubmit={add} aria-label="Add a date">
+      <label>From<input type="date" value={start} onChange={(e) => setStart(e.target.value)} aria-label="new date from" /></label>
+      <label>To <span className="muted">· optional</span><input type="date" value={end} min={start || undefined} onChange={(e) => setEnd(e.target.value)} aria-label="new date to" /></label>
+      <label className="grow">Name<input value={title} placeholder="e.g. Sankranti" onChange={(e) => setTitle(e.target.value)} aria-label="new date name" /></label>
+      <label>Kind
+        <select value={kind} onChange={(e) => setKind(e.target.value as EventKind)} aria-label="new date kind">
+          {KINDS.map((k) => <option key={k} value={k}>{KIND_NAMES[k]}</option>)}
+        </select>
+      </label>
+      <button className="btn soft" type="submit"><Icon name="plus" size={15} /> Add</button>
+      {problem && <div className="add-problem small">{problem}</div>}
+    </form>
+  );
+}
+
 function CalendarReview({ doc, onDone, onClose }: { doc: CampusDocument; onDone: (msg: string) => void; onClose: () => void }) {
-  const [rows, setRows] = useState<CalendarEvent[] | null>(null);
+  const [rows, setRows] = useState<Row[] | null>(null);
+  const [removed, setRemoved] = useState<Row[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const nextKey = useRef(0);
 
   // The panel opens above the list, so bring it into view: otherwise a click
   // on "Review dates" further down the page seems to do nothing.
@@ -149,18 +190,41 @@ function CalendarReview({ doc, onDone, onClose }: { doc: CampusDocument; onDone:
   }, [doc.id]);
 
   useEffect(() => {
-    api.calendarDraft(doc.id).then((r) => setRows(r.data.events)).catch((e) => setError(e.message));
+    api
+      .calendarDraft(doc.id)
+      .then((r) => setRows(r.data.events.map((e) => ({ ...e, key: nextKey.current++ }))))
+      .catch((e) => setError(e.message));
   }, [doc.id]);
 
-  const set = (i: number, patch: Partial<CalendarEvent>) =>
-    setRows((rs) => rs && rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const set = (key: number, patch: Partial<CalendarEvent>) =>
+    setRows((rs) => rs && rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+
+  // Nothing is saved until Confirm, so removing a row is only a change to
+  // this draft — Undo puts it back, and Cancel drops every change.
+  function remove(row: Row) {
+    setRows((rs) => rs && rs.filter((r) => r.key !== row.key));
+    if (!row.added) setRemoved((rm) => [...rm, row]);
+  }
+  function undoRemove() {
+    const last = removed[removed.length - 1];
+    if (!last) return;
+    setRemoved((rm) => rm.slice(0, -1));
+    setRows((rs) => rs && [...rs, last].sort(byDate));
+  }
+  function add(e: Pick<CalendarEvent, "start_date" | "end_date" | "title" | "kind" | "years">) {
+    const row: Row = {
+      ...e, id: null, document_id: doc.id, source_text: null, page: null, flags: [],
+      include: true, confirmed: false, key: nextKey.current++, added: true,
+    };
+    setRows((rs) => [...(rs ?? []), row].sort(byDate));
+  }
 
   async function confirm() {
     if (!rows) return;
     setBusy(true);
     setError(null);
     try {
-      const res = await api.confirmCalendar(doc.id, rows);
+      const res = await api.confirmCalendar(doc.id, rows.map(({ key: _k, added: _a, ...e }) => e));
       onDone(`${doc.title}: ${res.data.confirmed} events in force, ${res.data.holidays} of them holidays. Leave requests now count working days against it.`);
     } catch (e) {
       setError((e as ApiError).message);
@@ -170,6 +234,8 @@ function CalendarReview({ doc, onDone, onClose }: { doc: CampusDocument; onDone:
   }
 
   const flagged = rows?.filter((r) => r.flags?.length).length ?? 0;
+  const holidays = rows?.filter((r) => r.include && r.kind === "holiday").length ?? 0;
+  const added = rows?.filter((r) => r.added).length ?? 0;
   return (
     <div className="card review" ref={panel}>
       <div className="review-head">
@@ -184,6 +250,16 @@ function CalendarReview({ doc, onDone, onClose }: { doc: CampusDocument; onDone:
         <button className="link" onClick={onClose}>close</button>
       </div>
       {error && <div className="banner deny">{error}</div>}
+      {rows && <AddDate onAdd={add} />}
+      {rows && (
+        <div className="review-tally muted small">
+          {holidays} holiday{holidays === 1 ? "" : "s"} ticked
+          {added > 0 && <> · {added} added by you</>}
+          {removed.length > 0 && (
+            <> · {removed.length} removed <button className="link" onClick={undoRemove}>undo</button></>
+          )}
+        </div>
+      )}
       {!rows ? (
         <div className="muted">Loading the parsed dates…</div>
       ) : !rows.length ? (
@@ -192,29 +268,31 @@ function CalendarReview({ doc, onDone, onClose }: { doc: CampusDocument; onDone:
         <div className="review-scroll">
           <table className="review-table">
             <thead>
-              <tr><th>Use</th><th>From</th><th>To</th><th>Event</th><th>Kind</th><th>Years</th></tr>
+              <tr><th>Use</th><th>From</th><th>To</th><th>Event</th><th>Kind</th><th>Years</th><th /></tr>
             </thead>
             <tbody>
-              {rows.map((r, i) => (
-                <tr key={i} className={`${r.flags?.length ? "flag" : ""} ${r.include ? "" : "off"}`}>
+              {rows.map((r) => (
+                <tr key={r.key} className={`${r.flags?.length ? "flag" : ""} ${r.include ? "" : "off"} ${r.added ? "added" : ""}`}>
                   <td><input type="checkbox" checked={r.include} aria-label={`use ${r.title}`}
-                             onChange={(e) => set(i, { include: e.target.checked })} /></td>
+                             onChange={(e) => set(r.key, { include: e.target.checked })} /></td>
                   <td><input type="date" value={r.start_date ?? ""}
-                             onChange={(e) => set(i, { start_date: e.target.value || null })} /></td>
+                             onChange={(e) => set(r.key, { start_date: e.target.value || null })} /></td>
                   <td><input type="date" value={r.end_date ?? ""}
-                             onChange={(e) => set(i, { end_date: e.target.value || null })} /></td>
+                             onChange={(e) => set(r.key, { end_date: e.target.value || null })} /></td>
                   <td>
-                    <input className="wide" value={r.title} onChange={(e) => set(i, { title: e.target.value })} />
+                    <input className="wide" value={r.title} onChange={(e) => set(r.key, { title: e.target.value })} />
+                    {r.added && <span className="chip small ok">added by you</span>}
                     {r.source_text && <div className="src-text">from: “{r.source_text}”{r.page ? ` · p.${r.page}` : ""}</div>}
                     {r.flags?.map((f) => <span key={f} className="chip small warn">{FLAG_NAMES[f] ?? f}</span>)}
                   </td>
                   <td>
-                    <select value={r.kind} onChange={(e) => set(i, { kind: e.target.value as EventKind })}>
+                    <select value={r.kind} onChange={(e) => set(r.key, { kind: e.target.value as EventKind })}>
                       {KINDS.map((k) => <option key={k} value={k}>{KIND_NAMES[k]}</option>)}
                     </select>
                   </td>
                   <td><input className="years" value={r.years} title='"all", or years like "1" or "1,2"'
-                             onChange={(e) => set(i, { years: e.target.value })} /></td>
+                             onChange={(e) => set(r.key, { years: e.target.value })} /></td>
+                  <td><button className="link remove" onClick={() => remove(r)} aria-label={`remove ${r.title || "this row"}`}>remove</button></td>
                 </tr>
               ))}
             </tbody>
@@ -231,7 +309,8 @@ function CalendarReview({ doc, onDone, onClose }: { doc: CampusDocument; onDone:
   );
 }
 
-export function Documents() {
+/** onChanged: the calendar in force may have changed (confirmed or deleted). */
+export function Documents({ onChanged }: { onChanged?: () => void }) {
   const [docs, setDocs] = useState<CampusDocument[] | null>(null);
   const [mayManage, setMayManage] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -262,6 +341,7 @@ export function Documents() {
       setNotice({ tone: "ok", text: `Removed ${d.id} ${d.title} — it no longer answers any question.` });
       if (reviewing?.id === d.id) setReviewing(null);
       load();
+      onChanged?.();
     } catch (e) {
       setNotice({ tone: "deny", text: (e as ApiError).message });
     } finally {
@@ -303,7 +383,7 @@ export function Documents() {
         <CalendarReview
           doc={reviewing}
           onClose={() => setReviewing(null)}
-          onDone={(msg) => { setReviewing(null); setNotice({ tone: "ok", text: msg }); load(); }}
+          onDone={(msg) => { setReviewing(null); setNotice({ tone: "ok", text: msg }); load(); onChanged?.(); }}
         />
       )}
       <div className="docs-head">

@@ -466,7 +466,41 @@ def main() -> int:
               got["source"] == "calendar" and [e["title"] for e in got["events"]] == ["Deepavali holiday"],
               str(got)[:200])
 
+        section("adding and removing dates in a review")
         login("lakshmi.narayanan", "advisor-demo")
+        current = c.get(f"/api/documents/{cal_id}/events").json()["data"]["events"]
+        week = (date(2026, 11, 9), date(2026, 11, 13))  # Deepavali Mon 9 Nov is the parsed holiday
+        check("before: Mon-Fri 9-13 Nov has 4 working days (Deepavali)",
+              dates.working_days(*week, dates.college_holidays(3)) == 4)
+        added = {"start_date": "2026-11-12", "end_date": "2026-11-12", "title": "Local festival",
+                 "kind": "holiday", "years": "all", "include": True}
+        kept = [e for e in current if not e["title"].startswith("Deepavali")]
+        r = c.put(f"/api/documents/{cal_id}/events", json={"events": kept + [added]})
+        check("a row the reviewer added (no source text) is accepted with the rest",
+              r.status_code == 200, r.text[:200])
+        after = c.get(f"/api/documents/{cal_id}/events").json()["data"]["events"]
+        check("  it is stored, confirmed, with no source", any(
+            e["title"] == "Local festival" and e["confirmed"] and not e["source_text"] for e in after))
+        check("  and a row left out is gone from the calendar, not merely unticked",
+              not any(e["title"].startswith("Deepavali") for e in after) and len(after) == len(current))
+        check("the arithmetic follows at once: Deepavali works, the added day doesn't (still 4)",
+              date(2026, 11, 9) not in dates.college_holidays(3)
+              and date(2026, 11, 12) in dates.college_holidays(3)
+              and dates.working_days(*week, dates.college_holidays(3)) == 4)
+        r = c.put(f"/api/documents/{cal_id}/events", json={"events": [e for e in after if e["title"] != "Local festival"]})
+        check("removing the added day too: 5 working days",
+              r.status_code == 200 and dates.working_days(*week, dates.college_holidays(3)) == 5)
+        login("ravi.kumar", "ravi-demo")
+        got = c.get("/api/calendar", params={"start": "2026-11-01", "end": "2026-11-30"}).json()
+        check("  and students see the change (no Deepavali, no festival in November)",
+              got["source"] == "calendar" and not any(e["kind"] == "holiday" for e in got["events"]), str(got)[:200])
+        check("a student cannot add a date: 403, and nothing changes", c.put(
+            f"/api/documents/{cal_id}/events", json={"events": [added]}).status_code == 403
+              and date(2026, 11, 12) not in dates.college_holidays(3))
+        login("lakshmi.narayanan", "advisor-demo")
+        r = c.put(f"/api/documents/{cal_id}/events", json={"events": [{**added, "title": ""}]})
+        check("an added row with no name is refused", r.status_code == 400 and "Row 1" in r.json()["detail"])
+
         c.delete(f"/api/documents/{cal_id}")
         check("deleting the calendar falls back to the placeholder file",
               dates.holiday_source() == "seed" and date(2026, 11, 18) in dates.college_holidays(3))

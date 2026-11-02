@@ -18,15 +18,16 @@ const VIEWS: Record<View, { title: string; short: string; icon: string; blurb: s
   documents: { title: "Documents", short: "Documents", icon: "documents", blurb: "The calendar, syllabi and regulations answers come from." },
 };
 
-/** The next dated thing on the calendar, as a tear-off date tile. */
-function NextDate() {
+/** The next dated thing on the calendar, as a tear-off date tile. Reloads
+ * when the calendar in force changes, so a confirmed calendar shows at once. */
+function NextDate({ refreshKey }: { refreshKey: number }) {
   const [next, setNext] = useState<CalendarEvent | null | undefined>(undefined);
   useEffect(() => {
     api
       .calendar()
       .then((r) => setNext(r.events.find((e) => e.kind !== "other") ?? null))
       .catch(() => setNext(null));
-  }, []);
+  }, [refreshKey]);
   if (!next?.start_date) return null;
   const d = new Date(next.start_date + "T00:00:00");
   return (
@@ -129,7 +130,7 @@ export default function App() {
 
         <div className="today">
           {isStudent && view !== "records" && <AttendanceCard refreshKey={refreshKey} compact />}
-          <NextDate />
+          <NextDate refreshKey={refreshKey} />
         </div>
 
         <div className="grow" />
@@ -183,7 +184,7 @@ export default function App() {
           )}
           {view === "documents" && (
             <div className="scroll-pad wide">
-              <Documents />
+              <Documents onChanged={() => setRefreshKey((k) => k + 1)} />
             </div>
           )}
         </div>
