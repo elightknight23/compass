@@ -1,41 +1,51 @@
-62 labelled utterances from data/eval_utterances.json
+67 labelled utterances from data/eval_utterances.json
 
-=== thin baseline prompt: 58/62 (providers: gemini-3.5-flash-lite=62)
+=== thin baseline prompt: 59/67 (providers: gemini-3.5-flash-lite=67)
 
-  expected \ got  DOC CAL CMP LV  STA AMD CNL STF CLR OOS
-  DOC              15   .   .   .   .   .   .   .   .   .
-  CAL               .   7   .   .   .   .   .   .   .   .
-  CMP               .   .   5   .   .   .   .   .   .   .
-  LV                .   .   .   9   .   .   .   .   .   .
-  STA               .   .   .   .   6   .   .   .   .   .
-  AMD               .   .   2   .   .   1   .   .   .   .
-  CNL               .   .   .   .   .   .   4   .   .   .
-  STF               .   .   .   .   .   .   .   5   .   .
-  CLR               .   .   .   .   1   .   .   .   2   1
-  OOS               .   .   .   .   .   .   .   .   .   4
+  expected \ got  DOC CAL MES CMP LV  STA AMD CNL STF CLR OOS
+  DOC              13   .   .   .   .   .   .   .   .   1   1
+  CAL               .   7   .   .   .   .   .   .   .   .   .
+  MES               .   .   4   .   .   .   .   .   .   .   .
+  CMP               .   .   .   6   .   .   .   .   .   .   .
+  LV                .   .   .   .   9   .   .   .   .   .   .
+  STA               .   .   .   .   .   6   .   .   .   .   .
+  AMD               .   .   .   1   .   .   1   .   .   1   .
+  CNL               .   .   .   .   .   .   .   3   1   .   .
+  STF               .   .   .   .   .   .   .   .   5   .   .
+  CLR               .   .   .   1   .   1   .   .   .   1   1
+  OOS               .   .   .   .   .   .   .   .   .   .   4
 
   misses:
+   - 'What time do the hostel gates close?'
+       expected document_question, got out_of_scope  conf=0.9  [hostel words pull toward file_complaint]
    - 'make it high priority'
-       expected amend_record, got file_complaint  conf=0.95  [bare follow-up; must not file a new complaint]
+       expected amend_record, got clarify  conf=0.9  [bare follow-up; must not file a new complaint]
    - "actually that's a lab issue, not hostel"
        expected amend_record, got file_complaint  conf=0.95  [category change, no id]
+   - 'never mind, close CMP-1003'
+       expected cancel_record, got staff_action  conf=1.0  ['close' with a withdrawal cue — not a staff resolve]
    - 'I need help'
        expected clarify, got out_of_scope  conf=1.0  [genuinely ambiguous]
+   - "it's broken again"
+       expected clarify, got file_complaint  conf=0.85  [no object, no context]
    - 'what about mine?'
-       expected clarify, got check_status  conf=0.8  [dangling reference with no history]
+       expected clarify, got check_status  conf=0.9  [dangling reference with no history]
+   - 'Can I take leave on a holiday?'
+       expected document_question, got clarify  conf=0.85  [TRAP: 'holiday' and 'leave', but asks a rule]
 
-=== shipping prompt: 62/62 (providers: gemini-3.5-flash-lite=62)
+=== shipping prompt: 67/67 (providers: gemini-3.5-flash-lite=67)
 
-  expected \ got  DOC CAL CMP LV  STA AMD CNL STF CLR OOS
-  DOC              15   .   .   .   .   .   .   .   .   .
-  CAL               .   7   .   .   .   .   .   .   .   .
-  CMP               .   .   5   .   .   .   .   .   .   .
-  LV                .   .   .   9   .   .   .   .   .   .
-  STA               .   .   .   .   6   .   .   .   .   .
-  AMD               .   .   .   .   .   3   .   .   .   .
-  CNL               .   .   .   .   .   .   4   .   .   .
-  STF               .   .   .   .   .   .   .   5   .   .
-  CLR               .   .   .   .   .   .   .   .   4   .
-  OOS               .   .   .   .   .   .   .   .   .   4
+  expected \ got  DOC CAL MES CMP LV  STA AMD CNL STF CLR OOS
+  DOC              15   .   .   .   .   .   .   .   .   .   .
+  CAL               .   7   .   .   .   .   .   .   .   .   .
+  MES               .   .   4   .   .   .   .   .   .   .   .
+  CMP               .   .   .   6   .   .   .   .   .   .   .
+  LV                .   .   .   .   9   .   .   .   .   .   .
+  STA               .   .   .   .   .   6   .   .   .   .   .
+  AMD               .   .   .   .   .   .   3   .   .   .   .
+  CNL               .   .   .   .   .   .   .   4   .   .   .
+  STF               .   .   .   .   .   .   .   .   5   .   .
+  CLR               .   .   .   .   .   .   .   .   .   4   .
+  OOS               .   .   .   .   .   .   .   .   .   .   4
 
-delta: 58/62 -> 62/62 (+4). Report it as a range across runs.
+delta: 59/67 -> 67/67 (+8). Report it as a range across runs.

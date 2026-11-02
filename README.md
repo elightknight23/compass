@@ -354,14 +354,16 @@ The harnesses that need a model, with outputs saved to `docs/artifacts/`:
 
 | Harness | Produces |
 | :--- | :--- |
-| `run_acceptance.py` | 30 end-to-end rows through the real graph (uploaded syllabus and confirmed calendar included), plus a dead-database drill |
-| `eval_intents.py --both` | accuracy and a confusion matrix over 62 labelled utterances, against a deliberately thin baseline prompt |
+| `run_acceptance.py` | 34 end-to-end rows through the real graph (uploaded syllabus and confirmed calendar included), plus a dead-database drill |
+| `eval_intents.py --both` | accuracy and a confusion matrix over 67 labelled utterances, against a deliberately thin baseline prompt |
 | `redteam_injection.py` | two planted injections: a circular in the regulations, a "system notice" in an uploaded syllabus |
 | `compare_chunking.py` | naive versus structure-aware retrieval on a question built to straddle a heading |
 
 How to read the intent score: report it as a **range** across runs.
 On the 62-utterance set the shipping prompt scored 61/62 (31 Oct 2026) and
-62/62 (1 Nov), the thin baseline 58/62; the saved run is in
+62/62 (1 Nov), the thin baseline 58/62. With the mess menu added (67
+utterances, 2 Nov) it scored 66/67 and then, after one rule about meal
+timings, 67/67, against 59-61/67 for the thin baseline; the saved run is in
 `docs/artifacts/eval_matrix.txt`. Temperature 0 is not determinism. The eval set and the prompt share an
 author, so the figure measures self-consistency, not resilience to
 strangers.
