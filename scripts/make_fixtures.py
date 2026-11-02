@@ -2,8 +2,9 @@
 
 These imitate the shapes the parsers support — an Anna University-style
 syllabus, an NIT-style curriculum (one course per page, running header and
-footer, the title under the code), a table-style academic calendar, and a
-scan with no text layer —
+footer, the title under the code), a table-style academic calendar, an
+NIT-style one (a week-by-week grid, then a list of activities with
+month-first dates), and a scan with no text layer —
 without copying any real college's document. The output is committed
 (scripts/fixtures/), so the suite needs nothing beyond requirements.txt;
 this script and fpdf2 (requirements-dev.txt) are only for regenerating it.
@@ -164,6 +165,61 @@ def calendar() -> None:
     pdf.output(OUT / "calendar_2026_27.pdf")
 
 
+# NIT-style: SUN..SAT squares, each "Month D" with its label under it and
+# "(Week NN)" in the Sunday square; a label may wrap, and "(Friday)" marks a
+# day on Friday's timetable. Page 2 lists the same activities, month first.
+GRID_WEEKS = [
+    ["August 9\n(Week 04)", "August 10", "August 11", "August 12", "August 13", "August 14",
+     "August 15\nIndependence Day"],
+    ["August 30\n(Week 07)", "August 31\nPG Dissertation Mid-\nSemester Review",
+     "September 1\nPG Dissertation Mid-\nSemester Review", "September 2",
+     "September 3\nMid-Sem. Exams", "September 4\nMid-Sem. Exams", "September 5"],
+    ["September 6\n(Week 08)", "September 7\nMid-Sem. Exams", "September 8\nMid-Sem. Exams",
+     "September 9\nMid-Sem. Exams", "September 10\nMid-Sem. Exams",
+     "September 11\nMid-Sem. Exams", "September 12"],
+    ["September 27\n(Week 11)", "September 28", "September 29", "September 30", "October 1",
+     "October 2\nGandhi Jayanthi", "October 3\n(Friday)"],
+    ["November 22\n(Week 19)", "November 23", "November 24\nGuru Nanak's\nBirthday",
+     "November 25", "November 26", "November 27", "November 28"],
+]
+ACTIVITIES = [
+    ("S. No.", "Activity", "Dates"),
+    ("1.", "Payment of Fee and Online Registration", "July 13-19, 2026"),
+    ("2.", "PG Dissertation Mid-Semester Review", "August 31- September 1, 2026"),
+    ("3.", "Mid-Semester Examinations", "September 3-11, 2026"),
+    ("4.", "Submission of Second Class Review Committee Minutes", "October15, 2026"),
+    ("5.", "PhD Progress Reviews", "From November 20, 2026"),
+    ("6.", "Winter Vacation for Students", "November 26 - December 8, 2026"),
+    ("7.", "Winter Vacation for Faculty", "November 30 - December 4, 2026"),
+]
+
+
+def calendar_nit() -> None:
+    pdf = FPDF(orientation="L")
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 8, "AUTUMN SEMESTER ACADEMIC CALENDAR 2026-2027", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 8)
+    with pdf.table(text_align="LEFT") as table:
+        header = table.row()
+        for d in ("SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"):
+            header.cell(d)
+        for week in GRID_WEEKS:
+            r = table.row()
+            for cell in week:
+                r.cell(cell)
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 8, "MAJOR ACTIVITIES OF THE ACADEMIC CALENDAR", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 9)
+    with pdf.table(col_widths=(15, 150, 70), text_align="LEFT") as table:
+        for row in ACTIVITIES:
+            r = table.row()
+            for cell in row:
+                r.cell(cell)
+    pdf.output(OUT / "calendar_nit.pdf")
+
+
 def scan() -> None:
     """A page with marks on it but no text layer — what a phone scan is."""
     pdf = FPDF()
@@ -178,6 +234,7 @@ def main() -> int:
     syllabus()
     curriculum()
     calendar()
+    calendar_nit()
     scan()
     for p in sorted(OUT.iterdir()):
         print(f"{p.relative_to(OUT.parent.parent)}  {p.stat().st_size} bytes")

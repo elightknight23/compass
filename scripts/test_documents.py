@@ -43,6 +43,7 @@ SYLLABUS_PDF = (FIX / "syllabus_cse.pdf").read_bytes()
 CALENDAR_PDF = (FIX / "calendar_2026_27.pdf").read_bytes()
 SCANNED_PDF = (FIX / "scanned.pdf").read_bytes()
 CURRICULUM_PDF = (FIX / "curriculum_nit.pdf").read_bytes()
+CALENDAR_NIT_PDF = (FIX / "calendar_nit.pdf").read_bytes()
 
 
 def blocks(rows: list[str], kind: str = "row") -> D.Extracted:
@@ -188,6 +189,9 @@ def main() -> int:
         ("21.10.2026 to 23.10.2026 Ayudha Pooja holidays", ("2026-10-21", "2026-10-23")),
         ("21.10.2026 - 23.10.2026 Ayudha Pooja holidays", ("2026-10-21", "2026-10-23")),
         ("21-23 Oct 2026 Ayudha Pooja holidays", ("2026-10-21", "2026-10-23")),
+        ("July 13-19, 2026 Registration", ("2026-07-13", "2026-07-19")),
+        ("October15, 2026 Submission of minutes", ("2026-10-15", "2026-10-15")),
+        ("November 26 – December 8, 2026 Winter Vacation", ("2026-11-26", "2026-12-08")),
     ]
     for text, want in cases:
         e = one(text)
@@ -234,6 +238,47 @@ def main() -> int:
     check("academic_years parses '2026-27' and refuses nonsense",
           D.academic_years("2026-27") == (2026, 2027) and D.academic_years("2026-29") is None
           and D.academic_years("soon") is None)
+
+    e = one("August 31- September 1, 2026 PG Dissertation Review")
+    check("a month-first range across months takes the year printed at its end, unflagged",
+          (e["start_date"], e["end_date"], e["flags"]) == ("2026-08-31", "2026-09-01", []), str(e))
+    e = one("Monday, 3rd August | Reopening", kind="row")
+    check("a printed weekday that matches vouches for an inferred year (no flag)",
+          e["start_date"] == "2026-08-03" and e["flags"] == [], str(e))
+    for title, kind in {"Guru Nanak's Birthday": "holiday", "Winter Vacation for Faculty": "other",
+                        "Follows Friday's timetable": "other",
+                        "Submission of Grades to the Examination Section": "other"}.items():
+        check(f"kind: {title!r} -> {kind}", D.classify_kind(title) == kind, D.classify_kind(title))
+
+    section("an NIT-style calendar: a week grid, then a list of activities")
+    ex = D.extract(CALENDAR_NIT_PDF, ".pdf")
+    days = {b.cells[0]: b.cells[1] for b in ex.blocks if b.kind == "day"}
+    check("each grid square with writing becomes one day, its weekday from its column",
+          days.get("Saturday, August 15") == "Independence Day"
+          and days.get("Saturday, October 3") == "Follows Friday's timetable", str(days))
+    check("  a label that wraps is one label, hyphenated word rejoined",
+          days.get("Monday, August 31") == "PG Dissertation Mid-Semester Review", str(days))
+    check("  empty squares and (Week NN) markers are not days",
+          len(days) == 13 and not any("Week" in v for v in days.values()), str(days))
+    ev = D.parse_calendar(ex, "2026-27")
+    by = {e["title"]: e for e in ev}
+    check("nothing is flagged: the weekday column vouches for every grid date", not any(e["flags"] for e in ev),
+          str([(e["title"], e["flags"]) for e in ev if e["flags"]]))
+    check("the grid's holidays are kept, ticked",
+          all(by.get(t, {}).get("kind") == "holiday" and by[t]["include"] for t in
+              ("Independence Day", "Gandhi Jayanthi", "Guru Nanak's Birthday")), str(sorted(by)))
+    check("seven 'Mid-Sem. Exams' squares fold into the listed Sep 3-11 exams, once",
+          [(e["start_date"], e["end_date"]) for e in ev if e["kind"] == "exam"] == [("2026-09-03", "2026-09-11")]
+          and "Mid-Sem. Exams" not in by, str(sorted(by)))
+    check("  as does the two-day review the list also gives",
+          sum("Dissertation" in t for t in by) == 1)
+    check("a day on Friday's timetable is kept, as a working day",
+          by.get("Follows Friday's timetable", {}).get("kind") == "other")
+    check("students' winter vacation is a holiday; the faculty's is not",
+          by["Winter Vacation for Students"]["kind"] == "holiday"
+          and by["Winter Vacation for Faculty"]["kind"] == "other")
+    check("'From November 20, 2026' is a date", by["PhD Progress Reviews"]["start_date"] == "2026-11-20")
+    check("eleven events in all, no duplicates", len(ev) == 11, str([e["title"] for e in ev]))
 
     section("branch names")
     for raw, want in [("ECE", "ECE"), ("electronics and communication", "ECE"), ("CSE's", "CSE"),

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { api, ApiError, documentFileUrl } from "../api";
 import { day } from "../format";
 import type { CalendarEvent, CampusDocument, DocType, EventKind } from "../types";
@@ -141,6 +141,13 @@ function CalendarReview({ doc, onDone, onClose }: { doc: CampusDocument; onDone:
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // The panel opens above the list, so bring it into view: otherwise a click
+  // on "Review dates" further down the page seems to do nothing.
+  const panel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    panel.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [doc.id]);
+
   useEffect(() => {
     api.calendarDraft(doc.id).then((r) => setRows(r.data.events)).catch((e) => setError(e.message));
   }, [doc.id]);
@@ -164,7 +171,7 @@ function CalendarReview({ doc, onDone, onClose }: { doc: CampusDocument; onDone:
 
   const flagged = rows?.filter((r) => r.flags?.length).length ?? 0;
   return (
-    <div className="card review">
+    <div className="card review" ref={panel}>
       <div className="review-head">
         <div>
           <strong>Review {doc.title}</strong>

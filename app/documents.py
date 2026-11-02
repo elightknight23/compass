@@ -44,7 +44,7 @@ import calendar as _calendar
 import io
 import re
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 
 # ---------------------------------------------------------------------------
 # Types
@@ -71,7 +71,8 @@ class Block:
     """One unit of extracted content, in reading order.
 
     kind "heading" carries a level (1-4); "row" is a table row, cells
-    joined with " | "; "line" is everything else.
+    joined with " | "; "day" is one square of a month-grid calendar, cells
+    [weekday and date, what is written in it]; "line" is everything else.
     """
 
     page: int
@@ -147,6 +148,12 @@ def _extract_pdf(data: bytes, max_pages: int) -> Extracted:
                 tables = page.find_tables()
             except Exception:  # noqa: BLE001 — a malformed page keeps its text
                 tables = []
+            # A month grid is read square by square, from where the words
+            # sit; the small tables pdfplumber also finds inside it go.
+            grids = {id(t): days for t in tables if (days := _grid_days(page, t, number))}
+            grid_boxes = [t.bbox for t in tables if id(t) in grids]
+            tables = [t for t in tables if id(t) in grids or not any(
+                _inside(t.bbox, g) for g in grid_boxes)]
             boxes = [t.bbox for t in tables]
 
             def outside(obj, boxes=boxes) -> bool:
@@ -164,6 +171,11 @@ def _extract_pdf(data: bytes, max_pages: int) -> Extracted:
                     text_chars += len(text)
                     placed.append((line["top"], Block(number, "line", text)))
             for t in tables:
+                if id(t) in grids:
+                    for i, day in enumerate(grids[id(t)]):
+                        text_chars += len(day.text)
+                        placed.append((t.bbox[1] + i * 0.01, day))
+                    continue
                 for i, row in enumerate(t.extract() or []):
                     cells = [_cell(c) for c in row]
                     if any(cells):
@@ -181,6 +193,90 @@ def _extract_pdf(data: bytes, max_pages: int) -> Extracted:
             "the original digital PDF or a Word file.",
         )
     return Extracted(blocks, n)
+
+
+def _inside(inner: tuple, outer: tuple) -> bool:
+    return (inner[0] >= outer[0] - 1 and inner[1] >= outer[1] - 1
+            and inner[2] <= outer[2] + 1 and inner[3] <= outer[3] + 1) and inner != outer
+
+
+_DAY_HEADS = {name.lower(): i for i, name in enumerate(_calendar.day_name)}
+_DAY_HEADS.update({name.lower(): i for i, name in enumerate(_calendar.day_abbr)})
+_WEEK_NO_RE = re.compile(r"^\(?\s*week\s*\d+\s*\)?$", re.I)
+_ONLY_WEEKDAY_RE = re.compile(r"^\(\s*([A-Za-z]+)\s*\)$")
+
+
+def _grid_days(page, table, number: int) -> list[Block] | None:
+    """A month-grid calendar (a SUN..SAT header, a square per day), as one
+    block per day that has something written in it.
+
+    Rows of such a grid don't line up as table rows — a label wraps onto
+    lines of its own, and squares are merged — so the words are placed by
+    position instead: each word belongs to the weekday column it sits
+    under, and to the date above it in that column. The column also says
+    which weekday the date is, which the parser uses as a check.
+    None if this table is not a grid.
+    """
+    x0, top, x1, bottom = bbox = table.bbox
+    box = (max(x0 - 1, 0), max(top - 1, 0), min(x1 + 1, page.width), min(bottom + 1, page.height))
+    try:
+        words = page.within_bbox(box).extract_words(use_text_flow=False)
+    except Exception:  # noqa: BLE001 — a malformed table is read as rows instead
+        return None
+    heads = sorted((w for w in words if w["text"].lower().rstrip(".") in _DAY_HEADS),
+                   key=lambda w: w["top"])
+    if not heads:
+        return None
+    header = [w for w in heads if abs(w["top"] - heads[0]["top"]) < 3]
+    if len({_DAY_HEADS[w["text"].lower().rstrip(".")] for w in header}) < 5:
+        return None
+    # A column is the header's whole cell, not where its text sits: a
+    # left-aligned "MON" is nearer the Sunday square's right-hand words
+    # than its own.
+    cells = [c for row in table.rows for c in row.cells if c]
+    columns = []
+    for w in sorted(header, key=lambda w: w["x0"]):
+        mid = (w["x0"] + w["x1"]) / 2
+        cell = min((c for c in cells if c[0] <= mid <= c[2] and c[1] <= w["top"] <= c[3]),
+                   key=lambda c: c[2] - c[0], default=(w["x0"], 0, w["x1"], 0))
+        columns.append((cell[0], cell[2], _DAY_HEADS[w["text"].lower().rstrip(".")]))
+    below = max(w["bottom"] for w in header)
+
+    def column_of(mid: float) -> int:
+        inside = [i for i, (a, b, _) in enumerate(columns) if a <= mid <= b]
+        return inside[0] if inside else min(
+            range(len(columns)), key=lambda i: min(abs(columns[i][0] - mid), abs(columns[i][1] - mid)))
+
+    lines: dict[int, list[list[dict]]] = {}
+    for w in sorted((w for w in words if w["top"] > below), key=lambda w: (w["top"], w["x0"])):
+        col = column_of((w["x0"] + w["x1"]) / 2)
+        col_lines = lines.setdefault(col, [])
+        if col_lines and abs(col_lines[-1][0]["top"] - w["top"]) < 2.5:
+            col_lines[-1].append(w)
+        else:
+            col_lines.append([w])
+
+    days: list[tuple[float, float, Block]] = []
+    for col, col_lines in lines.items():
+        weekday = _calendar.day_name[columns[col][2]]
+        current: list | None = None
+        for line in col_lines:
+            text = " ".join(w["text"] for w in line)
+            if re.fullmatch(rf"({MONTH_ALT})\.?\s*\d{{1,2}}", text, re.I):
+                current = [line[0]["top"], columns[col][0], f"{weekday}, {text}", []]
+                days.append(current)
+            elif current is not None and not _WEEK_NO_RE.match(text):
+                current[3].append(text)
+    blocks = []
+    for top_, x, when, label_lines in sorted(days, key=lambda d: (d[0], d[1])):
+        # "Mid-" at a line end and "Semester" on the next are one word.
+        label = re.sub(r"(\w)- (\w)", r"\1-\2", " ".join(label_lines)).strip()
+        m = _ONLY_WEEKDAY_RE.match(label)
+        if m and m.group(1).lower() in _DAY_HEADS:
+            label = f"Follows {m.group(1).title()}'s timetable"  # a compensatory working day
+        if label:
+            blocks.append(Block(number, "day", f"{when} | {label}", cells=[when, label]))
+    return blocks if days else None
 
 
 def _extract_docx(data: bytes) -> Extracted:
@@ -535,8 +631,13 @@ DAY_MONTH_RANGE_RE = re.compile(
 DAY_MONTH_RE = re.compile(
     rf"\b(\d{{1,2}})(?:st|nd|rd|th)?\s*(?:of\s+)?({MONTH_ALT})\.?,?(?:\s*(\d{{4}}))?\b", re.I
 )
+MONTH_DAY_RANGE_RE = re.compile(
+    rf"\b({MONTH_ALT})\.?\s*(\d{{1,2}})(?:st|nd|rd|th)?\s*(?:-|–|to|&|and)\s*(\d{{1,2}})(?:st|nd|rd|th)?\b,?(?:\s*(\d{{4}}))?",
+    re.I,
+)
+# \s* rather than \s+: "October15, 2026" is printed that way.
 MONTH_DAY_RE = re.compile(
-    rf"\b({MONTH_ALT})\.?\s+(\d{{1,2}})(?:st|nd|rd|th)?\b(?:,?\s*(\d{{4}}))?", re.I
+    rf"\b({MONTH_ALT})\.?\s*(\d{{1,2}})(?:st|nd|rd|th)?\b(?:,?\s*(\d{{4}}))?", re.I
 )
 RANGE_JOINER_RE = re.compile(r"^\s*(?:-|–|—|to|till|until|upto|up to|through)\s*$", re.I)
 
@@ -548,10 +649,12 @@ HOLIDAY_WORDS = (
     "mahavir", "tamil new year", "may day", "ambedkar", "onam", "holi", "dussehra",
     "dasara", "vinayagar", "ganesh chaturthi", "vinayaka", "krishna jayanthi",
     "janmashtami", "thiruvalluvar", "uzhavar", "thaipusam", "shivaratri", "sivarathri",
-    "telugu new year", "ugadi", "labour day", "bhogi",
+    "telugu new year", "ugadi", "labour day", "bhogi", "guru nanak",
 )
 EXAM_WORDS = ("exam", "examination", "test", "cat ", "cat-", "assessment", "model ",
               "end semester", "end-semester", "practical", "internal", "viva")
+# Paperwork about an exam is not the exam.
+NOT_AN_EXAM = ("grades", "results", "verification", "submission")
 START_WORDS = ("commencement", "reopening", "re-opening", "classes begin", "class begins",
                "classes commence", "commence", "semester begins", "start of")
 END_WORDS = ("last working day", "end of semester", "semester ends", "last instruction day",
@@ -559,7 +662,7 @@ END_WORDS = ("last working day", "end of semester", "semester ends", "last instr
 # A row that merely says when a form is due is not a holiday even though it
 # mentions leave or vacation; these phrases veto the holiday reading.
 NOT_A_HOLIDAY = ("application", "apply", "form", "submission", "fee", "working day",
-                 "compensatory", "in lieu")
+                 "compensatory", "in lieu", "timetable", "for faculty", "for staff")
 
 
 def classify_kind(title: str) -> str:
@@ -570,7 +673,7 @@ def classify_kind(title: str) -> str:
         return "semester_start"
     if any(w in t for w in HOLIDAY_WORDS) and not any(w in t for w in NOT_A_HOLIDAY):
         return "holiday"
-    if any(w in t for w in EXAM_WORDS):
+    if any(w in t for w in EXAM_WORDS) and not any(w in t for w in NOT_AN_EXAM):
         return "exam"
     return "other"
 
@@ -622,18 +725,22 @@ def find_dates(text: str, years: tuple[int, int] | None, fallback_year: int | No
     def free(a: int, b: int) -> bool:
         return all(b <= x or a >= y for x, y in taken)
 
-    for m in DAY_MONTH_RANGE_RE.finditer(text):
-        month = MONTHS[m.group(3).lower().rstrip(".")]
-        year = int(m.group(4)) if m.group(4) else _year_for(month, years, fallback_year)
-        if year is None:
-            bad = True
-            continue
-        a, b = _safe_date(year, month, int(m.group(1))), _safe_date(year, month, int(m.group(2)))
-        if a and b and a <= b:
-            hits.append(_Hit(a, b, m.span(), inferred_year=not m.group(4)))
-            taken.append(m.span())
-        else:
-            bad = True
+    for pattern, month_group, first, last in ((DAY_MONTH_RANGE_RE, 3, 1, 2),
+                                               (MONTH_DAY_RANGE_RE, 1, 2, 3)):
+        for m in pattern.finditer(text):
+            if not free(*m.span()):
+                continue
+            month = MONTHS[m.group(month_group).lower().rstrip(".")]
+            year = int(m.group(4)) if m.group(4) else _year_for(month, years, fallback_year)
+            if year is None:
+                bad = True
+                continue
+            a, b = _safe_date(year, month, int(m.group(first))), _safe_date(year, month, int(m.group(last)))
+            if a and b and a <= b:
+                hits.append(_Hit(a, b, m.span(), inferred_year=not m.group(4)))
+                taken.append(m.span())
+            else:
+                bad = True
 
     for m in NUMERIC_RE.finditer(text):
         if not free(*m.span()):
@@ -702,7 +809,7 @@ def _title_for(b: Block, text: str, removed: list[tuple[int, int]],
     name. Words are never stripped from inside a cell, so "Saturday working
     (Monday order)" keeps its weekdays, because there they ARE the event.
     """
-    if b.kind == "row" and b.cells:
+    if b.kind in ("row", "day") and b.cells:
         kept = []
         for cell in b.cells:
             hits, _ = find_dates(cell, years, fallback)
@@ -760,6 +867,12 @@ def parse_calendar(extracted: Extracted, academic_year: str | None) -> list[dict
                 nxt = hits[i + 1]
                 between = text[h.span[1]: nxt.span[0]]
                 joined = RANGE_JOINER_RE.match(between) or (b.kind == "row" and between.strip() == "|")
+                if joined and h.inferred_year and not nxt.inferred_year:
+                    # "August 31 - September 1, 2026": the year printed at the
+                    # end belongs to the start too.
+                    year = nxt.start.year - (h.start.month > nxt.start.month)
+                    if (moved := _safe_date(year, h.start.month, h.start.day)):
+                        h = _Hit(moved, moved, h.span)
                 if joined and nxt.start >= h.end and (nxt.start - h.start).days <= 62:
                     groups.append([h, nxt])
                     i += 2
@@ -788,13 +901,45 @@ def parse_calendar(extracted: Extracted, academic_year: str | None) -> list[dict
                 expected = [start.weekday()] + ([end.weekday()] if end != start else [])
                 if weekdays[: len(expected)] != expected and weekdays[0] != start.weekday():
                     flags.append("weekday_mismatch")
+                elif "inferred_year" in flags:
+                    flags.remove("inferred_year")  # the right weekday vouches for the year
             key = (start, end, title.lower())
             if key in seen:
                 continue
             seen.add(key)
-            events.append(_event(start, end, title, text, b.page, flags))
+            events.append(_event(start, end, title, text, b.page, flags) | {"_grid": b.kind == "day"})
+    events = _fold_grid(events)
     events.sort(key=lambda e: (e["start_date"] or "9999", e["title"]))
     return events
+
+
+def _fold_grid(events: list[dict]) -> list[dict]:
+    """A month grid repeats, square by square, what a calendar usually also
+    lists: "Mid-Sem. Exams" on seven days beside "Mid-Semester Examinations,
+    September 3-11". Runs of the same label on consecutive days (weekends
+    between them allowed) become one event, and a run that a listed event of
+    the same kind already covers is dropped. What is left is what only the
+    grid says — usually the holidays.
+    """
+    listed = [e for e in events if not e.get("_grid")]
+    runs: list[dict] = []
+    for e in sorted((e for e in events if e.get("_grid")), key=lambda e: (e["title"].lower(), e["start_date"])):
+        prev = runs[-1] if runs else None
+        if prev and prev["title"].lower() == e["title"].lower():
+            last, nxt = date.fromisoformat(prev["end_date"]), date.fromisoformat(e["start_date"])
+            gap = [last + timedelta(days=k) for k in range(1, (nxt - last).days)]
+            if nxt > last and all(d.weekday() >= 5 for d in gap):
+                prev["end_date"] = e["end_date"]
+                prev["source_text"] = f"{prev['source_text']} / {e['source_text']}"[:500]
+                continue
+        runs.append(e)
+
+    def covered(g: dict) -> bool:
+        return any(o["kind"] == g["kind"] and o["start_date"] and o["start_date"] <= g["start_date"]
+                   and g["end_date"] <= o["end_date"] for o in listed)
+
+    kept = [g for g in runs if not covered(g)]
+    return [{k: v for k, v in e.items() if k != "_grid"} for e in listed + kept]
 
 
 def _event(start: date | None, end: date | None, title: str, source: str, page: int,
