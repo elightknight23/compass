@@ -12,7 +12,7 @@ PY="${PYTHON:-.venv/bin/python}"
 [ -x "$PY" ] || PY=python3
 
 failed=()
-for suite in test_llm test_dates test_attendance test_staff_lookup test_amend test_auth test_backends test_rag test_documents test_calendar test_certificates test_tracker; do
+for suite in test_llm test_dates test_attendance test_staff_lookup test_amend test_auth test_backends test_rag test_documents test_calendar test_certificates test_tracker test_mess; do
   # stderr carries the pinned-clock warning on every suite; keep it out of the summary
   out="$("$PY" "scripts/$suite.py" 2>/dev/null)"
   status=$?

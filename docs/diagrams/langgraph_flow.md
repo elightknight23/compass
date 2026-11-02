@@ -18,6 +18,7 @@ flowchart TD
     subgraph GROUND ["answers from the College's documents"]
         REG["document_question"]
         CALQ["calendar_question"]
+        MESSQ["mess_menu"]
     end
 
     subgraph OWN ["acts on your own records"]
@@ -39,6 +40,7 @@ flowchart TD
 
     CLS -->|"route: the intent IS the node name"| REG
     CLS --> CALQ
+    CLS --> MESSQ
     CLS --> FILE
     CLS --> LV
     CLS --> AMEND
@@ -56,6 +58,7 @@ flowchart TD
     REG --> FILT["<b>rag.build_filter</b><br/>asker's branch + semester<br/>no match → 'not uploaded'"]
     FILT -.->|"retrieve k=4 · local MiniLM"| CHROMA[("ChromaDB<br/>regulations + uploads")]
     CALQ --> CALC["<b>confirmed calendar</b><br/>dates compared to today in Python<br/>per year of study"]
+    MESSQ --> MENU["<b>mess menu</b><br/>home mess or the one named · day resolved in Python<br/>the warden's saved week, else the labelled sample"]
     CALC -.-> BE
     LOCK -.-> BE
     FILE -.-> BE
@@ -113,7 +116,7 @@ holidays included, and `app/attendance.py` does the division.
 
 ```mermaid
 flowchart TD
-    MSG["user message + last 6 turns"] --> LLM["classifier<br/>Pydantic schema, 10 intents"]
+    MSG["user message + last 6 turns"] --> LLM["classifier<br/>Pydantic schema, 11 intents"]
 
     LLM --> PARTS["date <b>parts</b> the model heard<br/>anchor_weekday · week_offset · end_weekday<br/>duration_weekdays · day_offset · explicit_start_date"]
     LLM --> META["intent · confidence · reasoning · record_id<br/>target_person · category · priority · leave_kind<br/>action · grant_exception"]

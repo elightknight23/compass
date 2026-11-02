@@ -34,7 +34,7 @@ sys.path.insert(0, str(ROOT))
 from app import config  # noqa: E402
 
 DATA = ROOT / "data"
-DOC_FILES = (DATA / "documents.json", DATA / "calendar.json")
+DOC_FILES = (DATA / "documents.json", DATA / "calendar.json", DATA / "mess_menus.json")
 LIVE = DATA / "records.json"
 EVENTS = DATA / "events.json"
 SEED = DATA / "records.json.seed"

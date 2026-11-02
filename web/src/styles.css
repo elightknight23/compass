@@ -545,3 +545,48 @@ a.src:hover { text-decoration: underline; }
   .cover-big { font-size: 1.45rem; margin: 0; }
   .login-panel { padding: 26px 16px 40px; place-items: start center; }
 }
+
+/* -- the mess menu --------------------------------------------------------- */
+.mess-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.mess-top .seg { flex-wrap: wrap; }
+.home-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--pine); margin-left: 6px; vertical-align: middle; }
+.mess-note { margin: 10px 0 12px; }
+.day-chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 12px; }
+.day-chip { border: 1px solid var(--rule); background: var(--sheet); color: var(--muted); border-radius: 10px;
+  padding: 7px 12px; font-weight: 600; font-size: 0.86rem; display: grid; justify-items: center; min-width: 54px; }
+.day-chip.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.today-mark { font-size: 0.62rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.75; }
+.meals { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.meal { background: var(--sheet); border: 1px solid var(--rule-2); border-radius: 14px; padding: 14px 16px;
+  box-shadow: var(--sh); border-top: 3px solid var(--rule); }
+.meal-breakfast { border-top-color: var(--marigold); }
+.meal-lunch { border-top-color: var(--pine); }
+.meal-snacks { border-top-color: var(--brick); }
+.meal-dinner { border-top-color: var(--muted); }
+.meal-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.meal-head strong { font-family: var(--serif); font-size: 1.05rem; }
+.dishes { margin: 0; padding-left: 18px; display: grid; gap: 3px; font-size: 0.92rem; }
+.week { margin-top: 18px; }
+.week summary { cursor: pointer; font-weight: 600; color: var(--muted); font-size: 0.9rem; padding: 6px 0; }
+.week-table, .menu-edit-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; min-width: 680px; }
+.week-table th, .week-table td, .menu-edit-table th, .menu-edit-table td {
+  text-align: left; vertical-align: top; padding: 7px 6px; border-top: 1px solid var(--rule-2); }
+.week-table thead th, .menu-edit-table thead th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--faint); border-top: 0; }
+.week-table tbody th, .menu-edit-table tbody th { font-weight: 700; color: var(--muted); width: 48px; }
+.week-table tr.today td, .week-table tr.today th { background: var(--pine-soft); }
+.menu-editor { margin-top: 4px; }
+.editor-tools { display: flex; gap: 8px; flex-wrap: wrap; }
+.file-btn { position: relative; overflow: hidden; cursor: pointer; }
+.file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.timings { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 10px; margin: 10px 0; }
+.timings label { display: grid; gap: 4px; font-size: 0.74rem; font-weight: 600; color: var(--muted); }
+.timings input, .menu-edit-table textarea {
+  font: inherit; font-size: 0.84rem; color: var(--ink); background: var(--paper);
+  border: 1px solid var(--rule); border-radius: 8px; padding: 6px 8px; width: 100%; min-width: 0; resize: vertical; }
+.menu-edit-table textarea { min-width: 140px; line-height: 1.4; }
+
+@media (max-width: 760px) {
+  .day-chips { gap: 4px; }
+  .day-chip { flex: 1; min-width: 0; padding: 7px 0; font-size: 0.8rem; }
+  .mess-top .seg { width: 100%; justify-content: space-between; }
+}

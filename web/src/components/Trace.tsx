@@ -131,6 +131,28 @@ export function Trace({ d, live = false }: { d: TraceT; live?: boolean }) {
         </Section>
       )}
 
+      {d.mess && (
+        <Section title="Mess menu · the day and mess worked out in Python">
+          <Row k="heard">
+            <span className="seam mono">
+              {Object.entries(d.mess.heard).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join("  ") || "nothing — defaults apply"}
+            </span>
+          </Row>
+          {d.mess.resolved && (
+            <Row k="resolved">
+              <span className="mono">{d.mess.resolved.mess} · {d.mess.resolved.day} · {d.mess.resolved.meal}</span>
+            </Row>
+          )}
+          {d.mess.source && (
+            <Row k="source">
+              <Chip tone={d.mess.source === "saved" ? "ok" : "warn"}>
+                {d.mess.source === "saved" ? "the warden's saved menu" : "sample menu"}
+              </Chip>
+            </Row>
+          )}
+        </Section>
+      )}
+
       {d.calendar && (
         <Section title="Calendar · dates compared in Python, not by the model">
           <Row k="heard">

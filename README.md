@@ -33,6 +33,7 @@ instruction to a language model.
 | :--- | :--- |
 | `document_question` | Answered from the College's documents (built-in regulations, uploaded syllabi and calendars) via RAG, with section-level citations, filtered to the asker's branch and semester |
 | `calendar_question` | *When* is the next holiday, which exams are next week, is there college on Friday: Python over the confirmed calendar, never the model reading dates |
+| `mess_menu` | What IFC A, B, C or D is serving: your home mess unless you name one, the day worked out in Python ("tomorrow", "Friday"), one meal or the whole day |
 | `file_complaint` | Opens a facility complaint: hostel, lab, library or transport, mirrored to a GitHub issue when configured |
 | `request_od_leave` | OD, medical or family-emergency leave (nothing else is granted). Resolves the dates in Python, counts working days against the holiday calendar, projects attendance, and submits; medical leave then asks for a certificate |
 | `check_status` | Your records and attendance always; anyone's if you are staff |
@@ -146,6 +147,21 @@ stops a student. The record says it is out of step, and a retry loop
 (startup, then every 5 minutes, or `scripts/sync_tracker.py`) catches it up
 without duplicates.
 
+### The mess menu
+
+Each mess (IFC A, B, C, D) has a weekly menu: breakfast, lunch, snacks and
+dinner for each day, with timings. Everyone can read every menu on the **Mess
+menu** page, which opens on your own mess and today. Hostellers have a home
+mess; a day scholar asking in chat is asked which mess they mean.
+
+- **Only the hostel warden edits** (`auth.MENU_MANAGERS`, checked in
+  `app/mess.py`, not just hidden on the page). Edit the grid, one dish per
+  line, or **Import CSV** (`Day, Breakfast, Lunch, Snacks, Dinner`). An import
+  fills the editor for checking and saves nothing until **Save menu**.
+  **Download CSV** gives the current menu in that same shape, as a template.
+- **Until a mess's menu is saved, a sample is shown**, labelled as one on the
+  page and in every chat answer.
+
 ---
 
 ## Run it
@@ -189,10 +205,10 @@ Published on purpose. These are fictional accounts with no real data behind them
 
 | Username | Password | Role |
 | :--- | :--- | :--- |
-| `ravi.kumar` | `ravi-demo` | Student, CSE sem 5, 76.2%, one day of margin |
+| `ravi.kumar` | `ravi-demo` | Student, CSE sem 5, 76.2%, one day of margin, hosteller (IFC A) |
 | `arjun.menon` | `arjun-demo` | Student, CSE sem 5, already below 75% |
 | `priya.sharma` | `priya-demo` | Student, ECE sem 3, comfortable |
-| `meena.krishnan` | `warden-demo` | Hostel warden: resolves complaints |
+| `meena.krishnan` | `warden-demo` | Hostel warden: resolves complaints, keeps the mess menus |
 | `lakshmi.narayanan` | `advisor-demo` | Faculty advisor: decides leave, uploads documents |
 
 ### The model: free, behind one interface
@@ -218,7 +234,7 @@ Student chat ─┐
               ├─> FastAPI ── identity from a signed session cookie, nowhere else
 Staff console ┘        │
                        v
-             classify ── LLM, structured output, 10 intents     <- the only creative step
+             classify ── LLM, structured output, 11 intents     <- the only creative step
                        │
                        v
              dates.resolve ── Python calendar, college holidays
@@ -243,6 +259,7 @@ app/
   rag.py           chunking, local embeddings, filtered retrieval, grounded answers, index freshness
   documents.py     extraction (PDF tables, DOCX), syllabus structure, calendar date parsing — pure
   library.py       upload, ingest, delete, calendar review — re-checks the caller on every write
+  mess.py          the mess menus: names, CSV, the sample, the warden's save — re-checks the caller
   dates.py         DateSpec + resolve() + working days against the holiday calendar
   attendance.py    the projection, and nothing else
   clock.py         the one definition of "today"
@@ -304,17 +321,18 @@ Refusals stay distinguishable, in chat and over HTTP:
 ## Testing and evaluation
 
 ```bash
-bash scripts/run_tests.sh       # 668 checks, no model, no network, ~2 min
+bash scripts/run_tests.sh       # 741 checks, no model, no network, ~2 min
 ```
 
 | Suite | Checks | Exercises |
 | :--- | ---: | :--- |
 | `test_staff_lookup.py` | 61 | the full 3 roles × 2 types × 4 verbs matrix; every refusal leaves the record unmoved |
 | `test_auth.py` | 63 | sessions, forged headers, scoped queues, refused POSTs asserted as 403 **and** an unchanged row, the SSE stream |
-| `test_backends.py` | 130 | one protocol suite (records, documents, calendar events) against JSON, SQLite and a real Postgres test database |
+| `test_backends.py` | 139 | one protocol suite (records, documents, calendar events, mess menus) against JSON, SQLite and a real Postgres test database |
 | `test_documents.py` | 162 | extraction from real PDFs/DOCX, both syllabus layouts, every calendar date shape (week grids too), adding and removing dates in review, the upload API by role, filtered retrieval, holidays in force |
 | `test_attendance.py` | 60 | the projection: OD raises, medical lowers, threshold crossing, held=0; which leave is granted; leave already taken is not counted twice |
 | `test_certificates.py` | 27 | who may attach and open a medical certificate, over HTTP; the warden's redacted copy; approval refused without one |
+| `test_mess.py` | 64 | mess names, cleaning, CSV import/export, only the warden writes (over HTTP, refusals change nothing), the sample label, chat answers by day and meal |
 | `test_tracker.py` | 41 | the GitHub mirror against a fake API: labels, close reasons, no names, GitHub down then back, no duplicates, leave without its reason |
 | `test_dates.py` | 36 | calendar arithmetic against a pinned clock, the holiday calendar, blank classifier fields |
 | `test_calendar.py` | 29 | `calendar_question` spans and answers per year of study; `document_question` filters and absence |
@@ -347,6 +365,9 @@ strangers.
 ## Known limitations
 
 An unnamed limitation is the one that bites during questions.
+
+- **The mess menu is one repeating week**, with a sample until the warden saves
+  the real one. No rotating cycles, dated specials or holiday menus yet.
 
 - **The built-in regulations and holiday list are placeholders**, written for
   a generic "College". Upload the real calendar and syllabi on the Documents

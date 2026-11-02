@@ -53,6 +53,7 @@ class User(Base):
     year: Mapped[int | None] = mapped_column(Integer)
     semester: Mapped[int | None] = mapped_column(Integer)
     section: Mapped[str | None] = mapped_column(String(32))
+    mess: Mapped[str | None] = mapped_column(String(16))  # a hosteller's home mess, "IFC A"
     residence: Mapped[str | None] = mapped_column(String(32))
     context: Mapped[str | None] = mapped_column(Text)
 
@@ -131,6 +132,19 @@ class Document(Base):
     chunks: Mapped[int | None] = mapped_column(Integer)
     uploaded_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
     uploaded_at: Mapped[str] = mapped_column(String(32))  # ISO timestamp
+
+
+class MessMenu(Base):
+    """One mess's saved week. Absent until the warden saves one; the sample
+    menu is served for it until then (app/mess.py)."""
+
+    __tablename__ = "mess_menus"
+
+    mess: Mapped[str] = mapped_column(String(16), primary_key=True)  # "IFC A"
+    week: Mapped[dict] = mapped_column(JSON)
+    timings: Mapped[dict | None] = mapped_column(JSON)
+    updated_by: Mapped[str | None] = mapped_column(String(16))
+    updated_at: Mapped[str | None] = mapped_column(String(32))
 
 
 class CalendarEvent(Base):

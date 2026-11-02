@@ -257,6 +257,16 @@ class Classification(BaseModel):
         description="True for 'the NEXT holiday' / 'when is the next exam' — one event, the soonest.",
     )
 
+    # -- mess_menu: which mess and which meal; the day goes in the date parts.
+    mess: str | None = Field(
+        default=None,
+        description="A mess the user named, as they said it: 'IFC B', 'B mess'. Null if none named.",
+    )
+    meal: Literal["breakfast", "lunch", "snacks", "dinner"] | None = Field(
+        default=None,
+        description="The meal asked about: breakfast, lunch, snacks (evening tiffin) or dinner. Null for the whole day.",
+    )
+
 
 CLASSIFIER_RULES = """You are the intent classifier for Compass, the College's \
 campus service desk. Students, hostel wardens and faculty advisors use it. \
@@ -272,6 +282,9 @@ calendar_question   - asks WHEN something dated happens, or whether a day is a
                       holiday: holidays, exam dates, semester start/end.
                       "When is the next holiday?", "Any holidays in November?",
                       "Is there college on Friday?", "When do CAT exams start?"
+mess_menu           - asks what a mess is SERVING: a meal, a day's menu.
+                      "What's for dinner?", "Lunch at IFC B tomorrow?",
+                      "What's the breakfast on Sunday?", "Menu today"
 file_complaint      - reports a NEW facility problem: hostel, lab, library, transport.
                       "The fan in room B-214 isn't working", "Bus 7 didn't come"
 amend_record        - CHANGES something the user already filed. No new problem is
@@ -320,6 +333,12 @@ Rules:
     "What are my subjects this semester?" -> doc_scope=syllabus, my_courses=true
     "ECE 3rd sem syllabus for signals"    -> doc_scope=syllabus, branch=ECE, semester=3
 - Asking for one's OWN attendance figure is check_status, not document_question.
+- Food being SERVED is mess_menu; a PROBLEM with the mess (bad food, hygiene,
+  a broken cooler) is file_complaint with category=hostel.
+    "What's for lunch tomorrow?" -> mess_menu, meal=lunch, day_offset=1
+    "Dinner at IFC C on Friday?" -> mess_menu, mess=IFC C, meal=dinner,
+                                    anchor_weekday=friday, week_offset=0
+    "The dal in the mess was stale" -> file_complaint, category=hostel
 - A new problem is file_complaint; an existing one is check_status.
 - cancel_record vs staff_action turns on WHOSE record and WHY, not the verb.
   Withdrawing something because it is no longer wanted is cancel_record.
@@ -461,6 +480,8 @@ def classify(state: AgentState) -> dict:
             "calendar_kind": result.calendar_kind,
             "month": result.month,
             "next_only": result.next_only or None,
+            "mess": result.mess,
+            "meal": result.meal,
             # "next week" with no weekday: resolve() needs an anchor, so the
             # bare week is carried for the calendar handler to turn into a
             # Monday-to-Sunday span.
@@ -537,6 +558,7 @@ def route(state: AgentState) -> str:
 HANDLERS = {
     Intent.DOCUMENT_QUESTION.value: handlers.handle_document_question,
     Intent.CALENDAR_QUESTION.value: handlers.handle_calendar_question,
+    Intent.MESS_MENU.value: handlers.handle_mess_menu,
     Intent.FILE_COMPLAINT.value: handlers.handle_file_complaint,
     Intent.AMEND_RECORD.value: handlers.handle_amend_record,
     Intent.CANCEL_RECORD.value: handlers.handle_cancel_record,

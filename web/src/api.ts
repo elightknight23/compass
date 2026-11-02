@@ -1,5 +1,5 @@
 import type {
-  Attendance, CalendarEvent, CampusDocument, CampusRecord, RecordEvent, Trace, User,
+  Attendance, CalendarEvent, CampusDocument, CampusRecord, MessData, MessMenu, RecordEvent, Trace, User,
 } from "./types";
 
 export class ApiError extends Error {
@@ -30,6 +30,21 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const api = {
   me: () => request<{ user: User; today: string }>("/api/me"),
+
+  messMenus: () => request<MessData>("/api/mess"),
+  saveMenu: (mess: string, week: Record<string, Record<string, string>>, timings: Record<string, string>) =>
+    request<{ outcome: string; menu: MessMenu }>(`/api/mess/${encodeURIComponent(mess)}`, {
+      method: "PUT",
+      body: JSON.stringify({ week, timings }),
+    }),
+  importMenu: (mess: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<{ outcome: string; week: MessMenu["week"] }>(
+      `/api/mess/${encodeURIComponent(mess)}/import`, { method: "POST", body: form },
+    );
+  },
+  menuCsvUrl: (mess: string) => `/api/mess/${encodeURIComponent(mess)}.csv`,
   login: (username: string, password: string) =>
     request<{ user: User }>("/api/login", {
       method: "POST",

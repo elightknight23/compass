@@ -40,6 +40,9 @@ class Intent(StrEnum):
     # confirmed calendar, not by the model reading dates out of excerpts:
     # "the next holiday" compares dates to today, which is arithmetic (I5).
     CALENDAR_QUESTION = "calendar_question"
+    # What a mess serves, by day and meal. A lookup by weekday, so Python
+    # resolves "today" or "Friday" and the model only says what it heard.
+    MESS_MENU = "mess_menu"
     FILE_COMPLAINT = "file_complaint"
     # Changing a request the student already has. Split out of
     # FILE_COMPLAINT because without it "make it urgent", said one turn

@@ -218,3 +218,13 @@ DOCUMENT_MANAGERS: frozenset[str] = frozenset({"faculty_advisor"})
 
 def may_manage_documents(user: dict | None) -> bool:
     return (user or {}).get("role") in DOCUMENT_MANAGERS
+
+
+# The mess menu is hostel business: the warden keeps it, and everyone reads
+# it. Like documents, it is not a record anyone decides, so it stays out of
+# ROLE_CAPABILITIES. app/mess.py checks it first in every write.
+MENU_MANAGERS: frozenset[str] = frozenset({"hostel_warden"})
+
+
+def may_manage_menu(user: dict | None) -> bool:
+    return (user or {}).get("role") in MENU_MANAGERS

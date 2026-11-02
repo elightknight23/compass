@@ -4,17 +4,19 @@ import { Chat } from "./components/Chat";
 import { Documents, UpcomingCard } from "./components/Documents";
 import { Icon, Mark } from "./components/Icon";
 import { Login } from "./components/Login";
+import { Mess } from "./components/Mess";
 import { AttendanceCard, MyRecords } from "./components/Records";
 import { StaffQueue } from "./components/StaffQueue";
 import { day, initials, ROLE_NAMES } from "./format";
 import type { CalendarEvent, User } from "./types";
 
-type View = "chat" | "records" | "queue" | "documents";
+type View = "chat" | "records" | "queue" | "mess" | "documents";
 
 const VIEWS: Record<View, { title: string; short: string; icon: string; blurb: string }> = {
   chat: { title: "Ask Compass", short: "Ask", icon: "chat", blurb: "Questions, requests and complaints, in your own words." },
   records: { title: "My requests", short: "Requests", icon: "requests", blurb: "Everything you've filed, and where it stands." },
   queue: { title: "Your queue", short: "Queue", icon: "queue", blurb: "Requests waiting on a decision from you." },
+  mess: { title: "Mess menu", short: "Mess", icon: "meal", blurb: "What each IFC is serving, by day and meal." },
   documents: { title: "Documents", short: "Documents", icon: "documents", blurb: "The calendar, syllabi and regulations answers come from." },
 };
 
@@ -86,6 +88,7 @@ export default function App() {
     "chat",
     ...(isStudent ? (["records"] as View[]) : []),
     ...(isStaff ? (["queue"] as View[]) : []),
+    "mess",
     "documents",
   ];
 
@@ -180,6 +183,11 @@ export default function App() {
           {view === "queue" && (
             <div className="scroll-pad">
               <StaffQueue user={user} refreshKey={refreshKey} />
+            </div>
+          )}
+          {view === "mess" && (
+            <div className="scroll-pad wide">
+              <Mess today={today} />
             </div>
           )}
           {view === "documents" && (

@@ -196,6 +196,22 @@ def protocol(kind: str) -> None:
     check(f"{tag} deleting a missing document is not_found",
           b.delete_document("DOC-3001")["kind"] == "not_found")
 
+    # -- the mess menu -----------------------------------------------------
+    check(f"{tag} list_menus starts empty (the sample is app/mess.py's, not stored)",
+          b.list_menus() == {**b.list_menus(), "success": True} and b.list_menus()["data"] == [])
+    week = {"monday": {"lunch": ["Rice", "Dal"]}}
+    saved = b.save_menu("IFC B", {"week": week, "timings": {"lunch": "12:30"}, "updated_by": "U101",
+                                  "updated_at": "2026-10-23T09:00:00+00:00"})
+    check(f"{tag} save_menu stores one mess's week, and returns it",
+          saved["success"] and saved["data"]["mess"] == "IFC B" and saved["data"]["week"] == week)
+    b.save_menu("IFC B", {"week": {"monday": {"lunch": ["Biryani"]}}, "timings": {}, "updated_by": "U101",
+                          "updated_at": "2026-10-24T09:00:00+00:00"})
+    b.save_menu("IFC A", {"week": week, "timings": {}, "updated_by": "U101", "updated_at": None})
+    menus = {m["mess"]: m for m in b.list_menus()["data"]}
+    check(f"{tag}   saving again replaces it, and other messes are kept",
+          sorted(menus) == ["IFC A", "IFC B"] and menus["IFC B"]["week"]["monday"]["lunch"] == ["Biryani"]
+          and menus["IFC B"]["updated_at"].startswith("2026-10-24"), str(menus.get("IFC B")))
+
     if kind != "json":
         # The demo reset re-seeds Postgres; the College's documents survive it.
         from seed_db import seed

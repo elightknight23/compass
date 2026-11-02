@@ -10,6 +10,7 @@ The zero-setup backend, and the fallback when Postgres is unreachable.
     data/attendance.json   per-student attended/held periods
     data/documents.json    uploaded documents (live; starts empty)
     data/calendar.json     events parsed from uploaded calendars (live)
+    data/mess_menus.json   menus the warden has saved, by mess (live)
 
 Writes are read-modify-rewrite of the whole file, which is fine at this
 size and honest about what it is. The one concession to safety is that the
@@ -79,6 +80,7 @@ class JsonBackend:
         self.events_path = self.dir / "events.json"
         self.documents_path = self.dir / "documents.json"
         self.calendar_path = self.dir / "calendar.json"
+        self.menus_path = self.dir / "mess_menus.json"
 
     # -- file I/O ----------------------------------------------------------
     def _load(self, path: Path, default: Any = None) -> Any:
@@ -391,3 +393,24 @@ class JsonBackend:
         # Undated rows (a holiday with "date to be announced") last, as in SQL.
         events.sort(key=lambda e: (e["start_date"] is None, e["start_date"] or "", e["id"]))
         return ok(events, backend=self.name)
+
+    # -- the mess menu -----------------------------------------------------
+    MENU_FIELDS = ("mess", "week", "timings", "updated_by", "updated_at")
+
+    def list_menus(self) -> dict:
+        try:
+            saved = self._load(self.menus_path, default={})
+        except (OSError, ValueError) as e:
+            return fail(f"Could not read the mess menu file: {e}", UNAVAILABLE)
+        return ok([{k: m.get(k) for k in self.MENU_FIELDS} for m in saved.values()], backend=self.name)
+
+    @_serialised
+    def save_menu(self, mess: str, menu: dict) -> dict:
+        try:
+            saved = self._load(self.menus_path, default={})
+            row = {k: menu.get(k) for k in self.MENU_FIELDS} | {"mess": mess}
+            saved[mess] = row
+            self._save(self.menus_path, saved)
+        except (OSError, ValueError) as e:
+            return fail(f"Could not write to the mess menu file: {e}", UNAVAILABLE)
+        return ok(row, backend=self.name)

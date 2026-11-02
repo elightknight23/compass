@@ -32,10 +32,11 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel, Field
 
 from . import (
-    attendance, auth, backends, certificates, clock, config, handlers, library, rag, tracker, users,
+    attendance, auth, backends, certificates, clock, config, handlers, library, mess, rag, tracker, users,
     warmup,
 )
 from .graph import HISTORY_TURNS, graph
@@ -67,7 +68,7 @@ app = FastAPI(title="Compass", lifespan=lifespan)
 # means a future one is opt-in, not opt-out.
 PUBLIC_USER_FIELDS = (
     "id", "username", "name", "role", "department", "branch", "year", "semester",
-    "section", "residence",
+    "section", "residence", "mess",
 )
 
 
@@ -564,6 +565,70 @@ def calendar(start: str | None = None, end: str | None = None, user: dict = Depe
     return {"source": res["data"]["source"], "events": rows}
 
 
+# ---------------------------------------------------------------------------
+# The mess menu — everyone reads; the warden writes (app/mess.py checks)
+# ---------------------------------------------------------------------------
+MESS_OUTCOME_STATUS = {
+    "not_authorized": 403,
+    "not_found": 404,
+    "invalid": 400,
+    "too_large": 413,
+    "unsupported_type": 415,
+    "unavailable": 502,
+}
+
+
+class MenuRequest(BaseModel):
+    week: dict
+    timings: dict | None = None
+
+
+def _mess(res: dict) -> JSONResponse:
+    return JSONResponse(status_code=MESS_OUTCOME_STATUS.get(res.get("outcome"), 400),
+                        content={"detail": res["error"], "outcome": res.get("outcome")})
+
+
+@app.get("/api/mess")
+def mess_menus(user: dict = Depends(require_user)):
+    """Every mess's week, the caller's home mess, and whether they may edit.
+    `official: false` on a menu means it is the sample."""
+    res = mess.menus()
+    if not res["success"]:
+        return _mess({**res, "outcome": "unavailable"})
+    return {"messes": list(mess.MESSES), "meals": list(mess.MEALS), "days": list(mess.DAYS),
+            "mine": mess.normalize_mess(user.get("mess")), "may_edit": auth.may_manage_menu(user),
+            "menus": res["data"]}
+
+
+@app.put("/api/mess/{name}")
+def save_mess_menu(name: str, req: MenuRequest, user: dict = Depends(require_user)):
+    res = mess.save(user, name, req.week, req.timings)
+    if not res["success"]:
+        return _mess(res)
+    return {"outcome": res["outcome"], "menu": res["data"]}
+
+
+@app.post("/api/mess/{name}/import")
+async def import_mess_menu(name: str, file: UploadFile = File(...), user: dict = Depends(require_user)):
+    """A CSV read into a menu for the warden to check. Nothing is saved."""
+    res = mess.import_csv(user, name, await file.read(200_001))
+    if not res["success"]:
+        return _mess(res)
+    return {"outcome": res["outcome"], "week": res["data"]["week"]}
+
+
+@app.get("/api/mess/{name}.csv")
+def mess_menu_csv(name: str, user: dict = Depends(require_user)):
+    """The menu as a spreadsheet — also the template for an import."""
+    which = mess.normalize_mess(name)
+    res = mess.get(which) if which else None
+    if not res or not res["success"] or res["data"] is None:
+        raise HTTPException(status_code=404, detail=f"There's no mess called {name!r}.")
+    slug = which.replace(" ", "_")
+    return Response(mess.to_csv(res["data"]), media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="{slug}_menu.csv"'})
+
+
 @app.post("/api/admin/reindex")
 def reindex(user: dict = Depends(require_user)):
     """Rebuild the whole index: the regulations in docs/regulations/ and
@@ -592,8 +657,23 @@ def health():
 # ---------------------------------------------------------------------------
 # Frontend — the built React app, when there is one
 # ---------------------------------------------------------------------------
+class _HashedAssets(StaticFiles):
+    """Vite names every asset by its content hash, so a file at a given URL
+    never changes: the browser may keep it for a year and never ask again.
+    (index.html, which names them, is no-cache below.)"""
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        if response.status_code == 200:
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
+
 if (WEB_DIST / "assets").is_dir():
-    app.mount("/assets", StaticFiles(directory=WEB_DIST / "assets"), name="assets")
+    # Compressed here and only here: the chat's event stream must not be
+    # buffered by a compressor, so the middleware wraps the assets alone.
+    app.mount("/assets", GZipMiddleware(_HashedAssets(directory=WEB_DIST / "assets"), minimum_size=1024),
+              name="assets")
 
 
 @app.get("/{path:path}", include_in_schema=False)

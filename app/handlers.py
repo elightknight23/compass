@@ -25,15 +25,16 @@ from __future__ import annotations
 import re
 from datetime import date, timedelta
 
-from . import attendance, auth, backends, clock, config, dates, llm, rag, users
+from . import attendance, auth, backends, clock, config, dates, llm, mess, rag, users
 from .backends import COMPLAINT, OD_REQUEST
 from .state import AgentState
 
 CAPABILITIES = (
-    "I can answer questions about college regulations, file hostel, lab, "
-    "library and transport complaints, apply for OD or leave (and show what "
-    "it does to your attendance), check the status of your requests, and "
-    "withdraw anything of yours that's still open."
+    "I can answer questions about the regulations and your syllabus, tell you "
+    "about holidays and exam dates, tell you what the mess is serving, file "
+    "hostel, lab, library and transport complaints, apply for OD or leave (and "
+    "show what it does to your attendance), check the status of your requests, "
+    "and withdraw anything of yours that's still open."
 )
 
 
@@ -372,6 +373,76 @@ def _calendar_footer(source: str, titles: dict[str, str]) -> str:
 # ---------------------------------------------------------------------------
 # file_complaint
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# mess_menu — a lookup by mess, weekday and meal, all resolved in Python
+# ---------------------------------------------------------------------------
+def _meal_lines(menu: dict, day: str, meals: tuple[str, ...]) -> list[str]:
+    lines = []
+    for m in meals:
+        items = menu["week"][day][m]
+        when = menu["timings"].get(m)
+        lines.append(f"- **{m.title()}**{f' ({when})' if when else ''}: "
+                     + (", ".join(items) if items else "nothing listed"))
+    return lines
+
+
+def handle_mess_menu(state: AgentState) -> dict:
+    user = state["user"]
+    if not user:
+        return _no_user()
+    e = state["entities"]
+    heard = {k: e[k] for k in ("mess", "meal", "start_date") if e.get(k)}
+    named = mess.normalize_mess(e.get("mess"))
+    if e.get("mess") and named is None:
+        return _out(
+            f"I don't know a mess called \"{e['mess']}\". The messes are {', '.join(mess.MESSES)}.",
+            outcome="unknown_mess", mess={"heard": heard},
+        )
+    which = named or mess.normalize_mess(user.get("mess"))
+    if which is None:
+        return _out(
+            f"Which mess — {', '.join(mess.MESSES[:-1])} or {mess.MESSES[-1]}? "
+            "You don't have a home mess on file, so tell me which one and I'll look it up.",
+            outcome="needs_mess", mess={"heard": heard},
+        )
+
+    today = clock.today()
+    try:
+        day = date.fromisoformat(e["start_date"]) if e.get("start_date") else today
+    except ValueError:
+        day = today
+    meal = e.get("meal") if e.get("meal") in mess.MEALS else None
+
+    res = mess.get(which)
+    if not res["success"] or res["data"] is None:
+        return _out("I couldn't read the mess menu just now. Please try again shortly.",
+                    error=res.get("error"), outcome="read_failed")
+    menu = res["data"]
+    weekday = mess.day_name(day)
+    when = ("today" if day == today else "tomorrow" if (day - today).days == 1
+            else "yesterday" if (day - today).days == -1 else None)
+    label = f"{_day(day)}{f' ({when})' if when else ''}"
+    whose = " (your mess)" if not named or named == user.get("mess") else ""
+
+    if meal:
+        items = menu["week"][weekday][meal]
+        timing = menu["timings"].get(meal)
+        body = (f"**{which}{whose} · {meal} · {label}**{f' — {timing}' if timing else ''}\n\n"
+                + (", ".join(items) if items else f"Nothing is listed for {meal} that day."))
+    else:
+        body = f"**{which}{whose} · {label}**\n\n" + "\n".join(_meal_lines(menu, weekday, mess.MEALS))
+    if not menu["official"]:
+        body += (f"\n\n_This is a sample menu — {which}'s official menu hasn't been entered yet, "
+                 "so check the notice board before you rely on it._")
+    trace = {"mess": {
+        "heard": heard,
+        "resolved": {"mess": which + (" (home mess)" if not named else ""),
+                     "day": f"{day.isoformat()} ({weekday.title()})", "meal": meal or "all"},
+        "source": "saved" if menu["official"] else "sample",
+    }}
+    return _out(body, outcome="answered", **trace)
+
+
 def handle_file_complaint(state: AgentState) -> dict:
     user = state["user"]
     if not user:

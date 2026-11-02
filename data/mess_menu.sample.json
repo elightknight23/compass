@@ -1,0 +1,829 @@
+{
+ "_note": "A SAMPLE menu for demonstration, not any mess's official menu. Shown, labelled as a sample, until the hostel warden saves a mess's real menu.",
+ "IFC A": {
+  "timings": {
+   "breakfast": "7:30 – 9:30",
+   "lunch": "12:30 – 2:00",
+   "snacks": "5:00 – 6:00",
+   "dinner": "7:30 – 9:30"
+  },
+  "week": {
+   "monday": {
+    "breakfast": [
+     "Idli",
+     "Sambar",
+     "Coconut chutney",
+     "Bread, butter & jam",
+     "Tea / Coffee",
+     "Milk"
+    ],
+    "lunch": [
+     "Rice",
+     "Sambar",
+     "Rasam",
+     "Bhindi fry",
+     "Curd",
+     "Papad",
+     "Pickle"
+    ],
+    "snacks": [
+     "Samosa",
+     "Tea"
+    ],
+    "dinner": [
+     "Chapati",
+     "Paneer butter masala",
+     "Rice",
+     "Dal",
+     "Curd",
+     "Salad"
+    ]
+   },
+   "tuesday": {
+    "breakfast": [
+     "Puri",
+     "Aloo curry",
+     "Boiled egg",
+     "Bread, butter & jam",
+     "Tea / Coffee"
+    ],
+    "lunch": [
+     "Rice",
+     "Dal tadka",
+     "Chapati",
+     "Aloo gobi",
+     "Curd",
+     "Salad"
+    ],
+    "snacks": [
+     "Mirchi bajji",
+     "Tea"
+    ],
+    "dinner": [
+     "Chapati",
+     "Egg curry / Veg kurma",
+     "Rice",
+     "Rasam",
+     "Curd"
+    ]
+   },
+   "wednesday": {
+    "breakfast": [
+     "Upma",
+     "Groundnut chutney",
+     "Banana",
+     "Bread, butter & jam",
+     "Tea / Coffee"
+    ],
+    "lunch": [
+     "Jeera rice",
+     "Rajma",
+     "Chapati",
+     "Cabbage poriyal",
+     "Buttermilk"
+    ],
+    "snacks": [
+     "Biscuits",
+     "Coffee"
+    ],
+    "dinner": [
+     "Chapati",
+     "Dal makhani",
+     "Jeera rice",
+     "Aloo fry",
+     "Curd"
+    ]
+   },
+   "thursday": {
+    "breakfast": [
+     "Masala dosa",
+     "Sambar",
+     "Tomato chutney",
+     "Tea / Coffee",
+     "Milk"
+    ],
+    "lunch": [
+     "Rice",
+     "Tomato dal",
+     "Rasam",
+     "Beans curry",
+     "Curd",
+     "Papad"
+    ],
+    "snacks": [
+     "Onion pakoda",
+     "Tea"
+    ],
+    "dinner": [
+     "Fried rice",
+     "Gobi manchurian",
+     "Chapati",
+     "Dal",
+     "Curd"
+    ]
+   },
+   "friday": {
+    "breakfast": [
+     "Aloo paratha",
+     "Curd",
+     "Pickle",
+     "Tea / Coffee"
+    ],
+    "lunch": [
+     "Veg pulao",
+     "Raita",
+     "Chapati",
+     "Mixed veg curry",
+     "Rasam"
+    ],
+    "snacks": [
+     "Bread pakoda",
+     "Tea"
+    ],
+    "dinner": [
+     "Chapati",
+     "Chana masala",
+     "Rice",
+     "Sambar",
+     "Curd",
+     "Payasam"
+    ]
+   },
+   "saturday": {
+    "breakfast": [
+     "Poha",
+     "Sev",
+     "Omelette",
+     "Bread, butter & jam",
+     "Tea / Coffee"
+    ],
+    "lunch": [
+     "Rice",
+     "Sambar",
+     "Chapati",
+     "Brinjal curry",
+     "Curd",
+     "Fryums"
+    ],
+    "snacks": [
+     "Sweet corn",
+     "Lemon juice"
+    ],
+    "dinner": [
+     "Chapati",
+     "Mixed veg curry",
+     "Rice",
+     "Dal",
+     "Curd"
+    ]
+   },
+   "sunday": {
+    "breakfast": [
+     "Pongal",
+     "Vada",
+     "Sambar",
+     "Coconut chutney",
+     "Tea / Coffee"
+    ],
+    "lunch": [
+     "Lemon rice",
+     "Dal",
+     "Chapati",
+     "Chole",
+     "Curd",
+     "Pickle"
+    ],
+    "snacks": [
+     "Veg puff",
+     "Coffee"
+    ],
+    "dinner": [
+     "Chicken biryani / Veg biryani",
+     "Raita",
+     "Mirchi ka salan",
+     "Gulab jamun"
+    ]
+   }
+  }
+ },
+ "IFC B": {
+  "timings": {
+   "breakfast": "7:30 – 9:30",
+   "lunch": "12:30 – 2:00",
+   "snacks": "5:00 – 6:00",
+   "dinner": "7:30 – 9:30"
+  },
+  "week": {
+   "monday": {
+    "breakfast": [
+     "Upma",
+     "Groundnut chutney",
+     "Banana",
+     "Bread, butter & jam",
+     "Tea / Coffee"
+    ],
+    "lunch": [
+     "Rice",
+     "Tomato dal",
+     "Rasam",
+     "Beans curry",
+     "Curd",
+     "Papad"
+    ],
+    "snacks": [
+     "Sweet corn",
+     "Lemon juice"
+    ],
+    "dinner": [
+     "Fried rice",
+     "Gobi manchurian",
+     "Chapati",
+     "Dal",
+     "Curd"
+    ]
+   },
+   "tuesday": {
+    "breakfast": [
+     "Masala dosa",
+     "Sambar",
+     "Tomato chutney",
+     "Tea / Coffee",
+     "Milk"
+    ],
+    "lunch": [
+     "Veg pulao",
+     "Raita",
+     "Chapati",
+     "Mixed veg curry",
+     "Rasam"
+    ],
+    "snacks": [
+     "Veg puff",
+     "Coffee"
+    ],
+    "dinner": [
+     "Chapati",
+     "Chana masala",
+     "Rice",
+     "Sambar",
+     "Curd",
+     "Payasam"
+    ]
+   },
+   "wednesday": {
+    "breakfast": [
+     "Aloo paratha",
+     "Curd",
+     "Pickle",
+     "Tea / Coffee"
+    ],
+    "lunch": [
+     "Rice",
+     "Sambar",
+     "Chapati",
+     "Brinjal curry",
+     "Curd",
+     "Fryums"
+    ],
+    "snacks": [
+     "Pani puri",
+     "Tea"
+    ],
+    "dinner": [
+     "Chapati",
+     "Mixed veg curry",
+     "Rice",
+     "Dal",
+     "Curd"
+    ]
+   },
+   "thursday": {
+    "breakfast": [
+     "Poha",
+     "Sev",
+     "Omelette",
+     "Bread, butter & jam",
+     "Tea / Coffee"
+    ],
+    "lunch": [
+     "Lemon rice",
+     "Dal",
+     "Chapati",
+     "Chole",
+     "Curd",
+     "Pickle"
+    ],
+    "snacks": [
+     "Samosa",
+     "Tea"
+    ],
+    "dinner": [
+     "Chapati",
+     "Paneer butter masala",
+     "Rice",
+     "Dal",
+     "Curd",
+     "Salad"
+    ]
+   },
+   "friday": {
+    "breakfast": [
+     "Pongal",
+     "Vada",
+     "Sambar",
+     "Coconut chutney",
+     "Tea / Coffee"
+    ],
+    "lunch": [
+     "Rice",
+     "Sambar",
+     "Rasam",
+     "Bhindi fry",
+     "Curd",
+     "Papad",
+     "Pickle"
+    ],
+    "snacks": [
+     "Mirchi bajji",
+     "Tea"
+    ],
+    "dinner": [
+     "Chapati",
+     "Egg curry / Veg kurma",
+     "Rice",
+     "Rasam",
+     "Curd"
+    ]
+   },
+   "saturday": {
+    "breakfast": [
+     "Uttapam",
+     "Tomato chutney",
+     "Sprouts",
+     "Tea / Coffee",
+     "Milk"
+    ],
+    "lunch": [
+     "Rice",
+     "Dal tadka",
+     "Chapati",
+     "Aloo gobi",
+     "Curd",
+     "Salad"
+    ],
+    "snacks": [
+     "Biscuits",
+     "Coffee"
+    ],
+    "dinner": [
+     "Chapati",
+     "Dal makhani",
+     "Jeera rice",
+     "Aloo fry",
+     "Curd"
+    ]
+   },
+   "sunday": {
+    "breakfast": [
+     "Idli",
+     "Sambar",
+     "Coconut chutney",
+     "Bread, butter & jam",
+     "Tea / Coffee",
+     "Milk"
+    ],
+    "lunch": [
+     "Jeera rice",
+     "Rajma",
+     "Chapati",
+     "Cabbage poriyal",
+     "Buttermilk"
+    ],
+    "snacks": [
+     "Onion pakoda",
+     "Tea"
+    ],
+    "dinner": [
+     "Chicken curry / Paneer curry",
+     "Chapati",
+     "Rice",
+     "Dal",
+     "Ice cream"
+    ]
+   }
+  }
+ },
+ "IFC C": {
+  "timings": {
+   "breakfast": "7:30 – 9:30",
+   "lunch": "12:30 – 2:00",
+   "snacks": "5:00 – 6:00",
+   "dinner": "7:30 – 9:30"
+  },
+  "week": {
+   "monday": {
+    "breakfast": [
+     "Aloo paratha",
+     "Curd",
+     "Pickle",
+     "Tea / Coffee"
+    ],
+    "lunch": [
+     "Lemon rice",
+     "Dal",
+     "Chapati",
+     "Chole",
+     "Curd",
+     "Pickle"
+    ],
+    "snacks": [
+     "Biscuits",
+     "Coffee"
+    ],
+    "dinner": [
+     "Chapati",
+     "Paneer butter masala",
+     "Rice",
+     "Dal",
+     "Curd",
+     "Salad"
+    ]
+   },
+   "tuesday": {
+    "breakfast": [
+     "Poha",
+     "Sev",
+     "Omelette",
+     "Bread, butter & jam",
+     "Tea / Coffee"
+    ],
+    "lunch": [
+     "Rice",
+     "Sambar",
+     "Rasam",
+     "Bhindi fry",
+     "Curd",
+     "Papad",
+     "Pickle"
+    ],
+    "snacks": [
+     "Onion pakoda",
+     "Tea"
+    ],
+    "dinner": [
+     "Chapati",
+     "Egg curry / Veg kurma",
+     "Rice",
+     "Rasam",
+     "Curd"
+    ]
+   },
+   "wednesday": {
+    "breakfast": [
+     "Pongal",
+     "Vada",
+     "Sambar",
+     "Coconut chutney",
+     "Tea / Coffee"
+    ],
+    "lunch": [
+     "Rice",
+     "Dal tadka",
+     "Chapati",
+     "Aloo gobi",
+     "Curd",
+     "Salad"
+    ],
+    "snacks": [
+     "Bread pakoda",
+     "Tea"
+    ],
+    "dinner": [
+     "Chapati",
+     "Dal makhani",
+     "Jeera rice",
+     "Aloo fry",
+     "Curd"
+    ]
+   },
+   "thursday": {
+    "breakfast": [
+     "Uttapam",
+     "Tomato chutney",
+     "Sprouts",
+     "Tea / Coffee",
+     "Milk"
+    ],
+    "lunch": [
+     "Jeera rice",
+     "Rajma",
+     "Chapati",
+     "Cabbage poriyal",
+     "Buttermilk"
+    ],
+    "snacks": [
+     "Sweet corn",
+     "Lemon juice"
+    ],
+    "dinner": [
+     "Fried rice",
+     "Gobi manchurian",
+     "Chapati",
+     "Dal",
+     "Curd"
+    ]
+   },
+   "friday": {
+    "breakfast": [
+     "Idli",
+     "Sambar",
+     "Coconut chutney",
+     "Bread, butter & jam",
+     "Tea / Coffee",
+     "Milk"
+    ],
+    "lunch": [
+     "Rice",
+     "Tomato dal",
+     "Rasam",
+     "Beans curry",
+     "Curd",
+     "Papad"
+    ],
+    "snacks": [
+     "Veg puff",
+     "Coffee"
+    ],
+    "dinner": [
+     "Chapati",
+     "Chana masala",
+     "Rice",
+     "Sambar",
+     "Curd",
+     "Payasam"
+    ]
+   },
+   "saturday": {
+    "breakfast": [
+     "Puri",
+     "Aloo curry",
+     "Boiled egg",
+     "Bread, butter & jam",
+     "Tea / Coffee"
+    ],
+    "lunch": [
+     "Veg pulao",
+     "Raita",
+     "Chapati",
+     "Mixed veg curry",
+     "Rasam"
+    ],
+    "snacks": [
+     "Pani puri",
+     "Tea"
+    ],
+    "dinner": [
+     "Chapati",
+     "Mixed veg curry",
+     "Rice",
+     "Dal",
+     "Curd"
+    ]
+   },
+   "sunday": {
+    "breakfast": [
+     "Upma",
+     "Groundnut chutney",
+     "Banana",
+     "Bread, butter & jam",
+     "Tea / Coffee"
+    ],
+    "lunch": [
+     "Rice",
+     "Sambar",
+     "Chapati",
+     "Brinjal curry",
+     "Curd",
+     "Fryums"
+    ],
+    "snacks": [
+     "Samosa",
+     "Tea"
+    ],
+    "dinner": [
+     "Veg biryani",
+     "Egg masala",
+     "Raita",
+     "Double ka meetha"
+    ]
+   }
+  }
+ },
+ "IFC D": {
+  "timings": {
+   "breakfast": "7:30 – 9:30",
+   "lunch": "12:30 – 2:00",
+   "snacks": "5:00 – 6:00",
+   "dinner": "7:30 – 9:30"
+  },
+  "week": {
+   "monday": {
+    "breakfast": [
+     "Pongal",
+     "Vada",
+     "Sambar",
+     "Coconut chutney",
+     "Tea / Coffee"
+    ],
+    "lunch": [
+     "Jeera rice",
+     "Rajma",
+     "Chapati",
+     "Cabbage poriyal",
+     "Buttermilk"
+    ],
+    "snacks": [
+     "Pani puri",
+     "Tea"
+    ],
+    "dinner": [
+     "Fried rice",
+     "Gobi manchurian",
+     "Chapati",
+     "Dal",
+     "Curd"
+    ]
+   },
+   "tuesday": {
+    "breakfast": [
+     "Uttapam",
+     "Tomato chutney",
+     "Sprouts",
+     "Tea / Coffee",
+     "Milk"
+    ],
+    "lunch": [
+     "Rice",
+     "Tomato dal",
+     "Rasam",
+     "Beans curry",
+     "Curd",
+     "Papad"
+    ],
+    "snacks": [
+     "Samosa",
+     "Tea"
+    ],
+    "dinner": [
+     "Chapati",
+     "Chana masala",
+     "Rice",
+     "Sambar",
+     "Curd",
+     "Payasam"
+    ]
+   },
+   "wednesday": {
+    "breakfast": [
+     "Idli",
+     "Sambar",
+     "Coconut chutney",
+     "Bread, butter & jam",
+     "Tea / Coffee",
+     "Milk"
+    ],
+    "lunch": [
+     "Veg pulao",
+     "Raita",
+     "Chapati",
+     "Mixed veg curry",
+     "Rasam"
+    ],
+    "snacks": [
+     "Mirchi bajji",
+     "Tea"
+    ],
+    "dinner": [
+     "Chapati",
+     "Mixed veg curry",
+     "Rice",
+     "Dal",
+     "Curd"
+    ]
+   },
+   "thursday": {
+    "breakfast": [
+     "Puri",
+     "Aloo curry",
+     "Boiled egg",
+     "Bread, butter & jam",
+     "Tea / Coffee"
+    ],
+    "lunch": [
+     "Rice",
+     "Sambar",
+     "Chapati",
+     "Brinjal curry",
+     "Curd",
+     "Fryums"
+    ],
+    "snacks": [
+     "Biscuits",
+     "Coffee"
+    ],
+    "dinner": [
+     "Chapati",
+     "Paneer butter masala",
+     "Rice",
+     "Dal",
+     "Curd",
+     "Salad"
+    ]
+   },
+   "friday": {
+    "breakfast": [
+     "Upma",
+     "Groundnut chutney",
+     "Banana",
+     "Bread, butter & jam",
+     "Tea / Coffee"
+    ],
+    "lunch": [
+     "Lemon rice",
+     "Dal",
+     "Chapati",
+     "Chole",
+     "Curd",
+     "Pickle"
+    ],
+    "snacks": [
+     "Onion pakoda",
+     "Tea"
+    ],
+    "dinner": [
+     "Chapati",
+     "Egg curry / Veg kurma",
+     "Rice",
+     "Rasam",
+     "Curd"
+    ]
+   },
+   "saturday": {
+    "breakfast": [
+     "Masala dosa",
+     "Sambar",
+     "Tomato chutney",
+     "Tea / Coffee",
+     "Milk"
+    ],
+    "lunch": [
+     "Rice",
+     "Sambar",
+     "Rasam",
+     "Bhindi fry",
+     "Curd",
+     "Papad",
+     "Pickle"
+    ],
+    "snacks": [
+     "Bread pakoda",
+     "Tea"
+    ],
+    "dinner": [
+     "Chapati",
+     "Dal makhani",
+     "Jeera rice",
+     "Aloo fry",
+     "Curd"
+    ]
+   },
+   "sunday": {
+    "breakfast": [
+     "Aloo paratha",
+     "Curd",
+     "Pickle",
+     "Tea / Coffee"
+    ],
+    "lunch": [
+     "Rice",
+     "Dal tadka",
+     "Chapati",
+     "Aloo gobi",
+     "Curd",
+     "Salad"
+    ],
+    "snacks": [
+     "Sweet corn",
+     "Lemon juice"
+    ],
+    "dinner": [
+     "Chicken fry / Paneer 65",
+     "Chapati",
+     "Rice",
+     "Rasam",
+     "Fruit custard"
+    ]
+   }
+  }
+ }
+}

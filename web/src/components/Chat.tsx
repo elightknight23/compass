@@ -17,8 +17,8 @@ const GROUPS: Record<string, Group[]> = {
   student: [
     { title: "Look something up", hint: "answered from the College's documents",
       prompts: ["What's the minimum attendance I need?", "What's the textbook for Computer Networks?"] },
-    { title: "Check the calendar", hint: "dates worked out in code",
-      prompts: ["When is the next holiday?", "Any exams in November?"] },
+    { title: "Dates and meals", hint: "worked out in code",
+      prompts: ["When is the next holiday?", "Any exams in November?", "What's for dinner tonight?"] },
     { title: "Apply or report", hint: "creates a request",
       prompts: ["I need OD next Monday to Wednesday for a symposium",
                 "I was sick yesterday, apply medical leave",
@@ -31,8 +31,8 @@ const GROUPS: Record<string, Group[]> = {
       prompts: ["Show me Arjun's complaints", "Resolve CMP-1001, the electrician fixed it"] },
     { title: "Try the boundary", hint: "staff, but not for leave",
       prompts: ["Approve Ravi's OD request"] },
-    { title: "Look something up", hint: "the regulations",
-      prompts: ["What time do the hostel gates close?"] },
+    { title: "Look something up", hint: "the regulations and the mess",
+      prompts: ["What time do the hostel gates close?", "What's for lunch at IFC B tomorrow?"] },
   ],
   faculty_advisor: [
     { title: "Leave", hint: "your inbox",

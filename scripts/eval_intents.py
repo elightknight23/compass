@@ -56,6 +56,7 @@ RETRY_WAIT = 40  # seconds: long enough for a per-minute quota to refill
 CODE = {
     "document_question": "DOC",
     "calendar_question": "CAL",
+    "mess_menu": "MES",
     "file_complaint": "CMP",
     "request_od_leave": "LV ",
     "check_status": "STA",
@@ -70,7 +71,7 @@ ORDER = list(CODE)
 NAIVE_RULES = """You are the intent classifier for a campus service desk.
 Classify the user's message into exactly one intent.
 
-document_question, calendar_question, file_complaint, request_od_leave,
+document_question, calendar_question, mess_menu, file_complaint, request_od_leave,
 check_status, amend_record, cancel_record, staff_action, clarify, out_of_scope"""
 
 # The persona every utterance is classified as. A student, because that is

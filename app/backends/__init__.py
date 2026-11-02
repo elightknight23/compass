@@ -253,6 +253,17 @@ class RecordBackend(Protocol):
         """Events by start date. Confirmed ones only unless asked. ok(list)."""
         ...
 
+    # -- the mess menu -----------------------------------------------------
+    def list_menus(self) -> dict:
+        """Every saved menu: ok([{mess, week, timings, updated_by, updated_at}]).
+        A mess with nothing saved is simply absent (app/mess.py serves the
+        sample for it)."""
+        ...
+
+    def save_menu(self, mess: str, menu: dict) -> dict:
+        """Replace one mess's menu. ok(stored menu)."""
+        ...
+
 
 # ---------------------------------------------------------------------------
 # Selection

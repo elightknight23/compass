@@ -15,6 +15,7 @@ export interface User {
   semester?: number | null;
   section?: string | null;
   residence?: string | null;
+  mess?: string | null;
   // Derived server-side from auth.ROLE_CAPABILITIES. Used to decide which
   // buttons to draw — never as the authorization itself.
   capabilities: RecordType[];
@@ -139,6 +140,12 @@ export interface Trace {
     year?: number;
   };
   holiday_calendar?: "calendar" | "seed" | "none";
+  // mess_menu: the mess, day and meal heard, and what Python made of them
+  mess?: {
+    heard: Record<string, unknown>;
+    resolved?: { mess: string; day: string; meal: string };
+    source?: "saved" | "sample";
+  };
   // request_od_leave, medical: the record that is waiting for its certificate
   attach_certificate?: string;
   [key: string]: unknown;
@@ -197,4 +204,22 @@ export interface CalendarEvent {
   flags?: string[];
   include: boolean;
   confirmed: boolean;
+}
+
+export interface MessMenu {
+  mess: string;
+  official: boolean; // false: the sample, until the warden saves this mess's menu
+  week: Record<string, Record<string, string[]>>; // day -> meal -> dishes
+  timings: Record<string, string>;
+  updated_by: string | null;
+  updated_at: string | null;
+}
+
+export interface MessData {
+  messes: string[];
+  meals: string[];
+  days: string[];
+  mine: string | null;
+  may_edit: boolean;
+  menus: MessMenu[];
 }

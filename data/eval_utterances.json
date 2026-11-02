@@ -338,5 +338,30 @@
     "utterance": "Is casual leave allowed here?",
     "expected": "document_question",
     "trap": "asks what the policy SAYS, applies for nothing"
+  },
+  {
+    "utterance": "What's for dinner tonight?",
+    "expected": "mess_menu",
+    "trap": "happy path — the menu"
+  },
+  {
+    "utterance": "lunch at IFC B tomorrow?",
+    "expected": "mess_menu",
+    "trap": "named mess, a day, terse"
+  },
+  {
+    "utterance": "Is there biryani in the mess on Sunday?",
+    "expected": "mess_menu",
+    "trap": "a dish, not a meal — still the menu"
+  },
+  {
+    "utterance": "The food in the mess gave me a stomach ache, the curd was sour",
+    "expected": "file_complaint",
+    "trap": "the mess as a PROBLEM, not a menu question"
+  },
+  {
+    "utterance": "What time does the mess open for breakfast?",
+    "expected": "mess_menu",
+    "trap": "timings live in the menu, not the regulations"
   }
 ]

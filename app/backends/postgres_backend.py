@@ -31,7 +31,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from .. import clock, config
-from ..models import Attendance, Base, CalendarEvent, Document, Record, RecordEvent, User
+from ..models import Attendance, Base, CalendarEvent, Document, MessMenu, Record, RecordEvent, User
 from . import (
     CALENDAR_EVENT_FIELDS,
     COMPLAINT,
@@ -53,7 +53,7 @@ from . import (
 
 PUBLIC_USER_COLUMNS = (
     "id", "username", "name", "role", "department", "branch", "year",
-    "semester", "section", "residence", "context",
+    "semester", "section", "mess", "residence", "context",
 )
 
 
@@ -397,5 +397,33 @@ class PostgresBackend:
                 rows = db.scalars(stmt.order_by(CalendarEvent.start_date.is_(None),
                                                 CalendarEvent.start_date, CalendarEvent.id)).all()
                 return ok([_cal_dict(e) for e in rows], backend=self.name)
+        except SQLAlchemyError as e:
+            return self._unavailable(e)
+
+    # -- the mess menu -----------------------------------------------------
+    MENU_FIELDS = ("mess", "week", "timings", "updated_by", "updated_at")
+
+    def list_menus(self) -> dict:
+        try:
+            with self._db() as db:
+                rows = db.scalars(select(MessMenu).order_by(MessMenu.mess)).all()
+                return ok([{k: getattr(r, k) for k in self.MENU_FIELDS} for r in rows], backend=self.name)
+        except SQLAlchemyError as e:
+            return self._unavailable(e)
+
+    def save_menu(self, mess: str, menu: dict) -> dict:
+        fields = {k: menu.get(k) for k in self.MENU_FIELDS if k != "mess"}
+        try:
+            with self._db() as db, db.begin():
+                row = db.get(MessMenu, mess)
+                if row is None:
+                    row = MessMenu(mess=mess, **fields)
+                    db.add(row)
+                else:
+                    for k, v in fields.items():
+                        setattr(row, k, v)
+                db.flush()
+                stored = {k: getattr(row, k) for k in self.MENU_FIELDS}
+            return ok(stored, backend=self.name)
         except SQLAlchemyError as e:
             return self._unavailable(e)

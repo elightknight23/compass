@@ -13,6 +13,7 @@ const PATHS: Record<string, string> = {
   check: "M5 12.5l4.5 4.5L19 7.5",
   calendar: "M4.5 6h15v14h-15zM4.5 10h15M9 3.5v4M15 3.5v4",
   send: "M5 12h13M13 6l6 6-6 6",
+  meal: "M4 12h16a8 7 0 01-16 0zM9 4.5c-.8 1 .8 2 0 3M12.5 4.5c-.8 1 .8 2 0 3M16 4.5c-.8 1 .8 2 0 3",
 };
 
 export function Icon({ name, size = 18 }: { name: keyof typeof PATHS | string; size?: number }) {
