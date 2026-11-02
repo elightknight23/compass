@@ -33,7 +33,7 @@ from fastapi import (
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from . import (
     attendance, auth, backends, certificates, clock, config, handlers, library, mess, rag, tracker, users,
@@ -107,13 +107,34 @@ def require_staff(user: dict = Depends(require_user)) -> dict:
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
+# Bounds on what reaches the model. A message is a sentence or a paragraph;
+# a pasted essay costs quota and seconds, and would be cut by the model's
+# window anyway. History turns are capped too: the browser replays them.
+MAX_MESSAGE_CHARS = 2000
+MAX_TURN_CHARS = 4000
+
+
 class Turn(BaseModel):
-    role: str
+    role: str = Field(max_length=20)
     content: str
+
+    @field_validator("content")
+    @classmethod
+    def _trimmed(cls, v: str) -> str:
+        # Trimmed, not refused: one long earlier answer must not make every
+        # later message in the conversation fail.
+        return v[:MAX_TURN_CHARS]
 
 
 class ChatRequest(BaseModel):
-    message: str
+    message: str = Field(min_length=1, max_length=MAX_MESSAGE_CHARS)
+
+    @field_validator("message")
+    @classmethod
+    def _not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("the message is empty")
+        return v.strip()
     # The browser holds the conversation log; it replays the tail so the
     # classifier can resolve follow-ups ("Which one?" -> "OD-2001"). A
     # sliding window, not a server-side checkpointer.
@@ -649,7 +670,8 @@ def health():
     return {
         "backend": backends.get_backend().name,
         "index": rag.index_status(),
-        "tracker": ({"enabled": True, "repo": config.GITHUB_REPO, "pending": len(tracker.pending())}
+        # No repository name: this endpoint is open, and the repo is private.
+        "tracker": ({"enabled": True, "pending": len(tracker.pending())}
                     if tracker.enabled() else {"enabled": False}),
     }
 

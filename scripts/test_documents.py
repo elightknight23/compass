@@ -280,6 +280,14 @@ def main() -> int:
     check("'From November 20, 2026' is a date", by["PhD Progress Reviews"]["start_date"] == "2026-11-20")
     check("eleven events in all, no duplicates", len(ev) == 11, str([e["title"] for e in ev]))
 
+    section("a title from the file's name, when none is given")
+    for name, want in [("1_B.Tech_Computer_Science_and_Engineering-Curriculum-new-2024-25_2024-7-19-15-40-32.pdf",
+                        "B.Tech Computer Science and Engineering-Curriculum-new-2024-25"),
+                       ("ac_26-27_1_r_2026-6-23-13-14-26.pdf", "ac 26-27 1 r"),
+                       ("CSE Syllabus R2021.docx", "CSE Syllabus R2021"), ("2026.pdf", "2026"), ("__.pdf", "__")]:
+        check(f"title_from_filename({name[:34]!r}…)", library.title_from_filename(name) == want,
+              library.title_from_filename(name))
+
     section("branch names")
     for raw, want in [("ECE", "ECE"), ("electronics and communication", "ECE"), ("CSE's", "CSE"),
                       ("Computer Science and Engineering", "CSE"), ("", "ALL"), ("all", "ALL"),

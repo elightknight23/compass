@@ -118,7 +118,8 @@ def main() -> int:
     sample_friday = mess.get("IFC A")["data"]["week"]["friday"]["dinner"]
     check("  the reply lists that dinner, with its timing", all(d in out["reply"] for d in sample_friday)
           and "7:30" in out["reply"] and "(today)" in out["reply"], out["reply"])
-    check("  and says it is a sample", "sample menu" in out["reply"])
+    check("  and says it is a sample, in italics the chat can render (*…*, not _…_)",
+          "*This is a sample menu" in out["reply"] and "_This" not in out["reply"])
     out = ask(RAVI, mess="B mess", meal="lunch", start_date="2026-10-24")
     check("'lunch at B mess tomorrow' -> IFC B, Saturday",
           out["debug"]["mess"]["resolved"]["mess"] == "IFC B" and "Saturday" in out["debug"]["mess"]["resolved"]["day"]

@@ -364,6 +364,7 @@ export function Documents({ onChanged }: { onChanged?: () => void }) {
 
   if (error) return <div className="banner deny">{error}</div>;
   if (!docs) return <div className="muted">Loading documents…</div>;
+  const waiting = docs.filter((d) => d.doc_type === "academic_calendar" && d.status === "needs_review");
 
   return (
     <div className="docs">
@@ -372,12 +373,13 @@ export function Documents({ onChanged }: { onChanged?: () => void }) {
           ? "What you upload here is what students' answers come from: the regulations are built in; calendars and syllabi are yours to add. Students only ever search the syllabus for their own branch."
           : "The College's documents Compass answers from. Syllabus answers are filtered to your branch and semester."}
       </p>
-      {mayManage && (
-        <UploadForm onUploaded={(d) => {
-          setNotice({ tone: "ok", text: `Uploaded ${d.id}. It is being processed — this takes a few seconds for a long syllabus.` });
-          load();
-        }} />
-      )}
+      {/* What is waiting on the advisor comes first: a calendar does nothing until it is reviewed. */}
+      {mayManage && !reviewing && waiting.map((d) => (
+        <div key={d.id} className="banner warn waiting">
+          <span><strong>{d.title}</strong> needs its dates reviewed — nothing in it counts until you confirm.</span>
+          <button className="btn small primary" onClick={() => setReviewing(d)}>Review dates</button>
+        </div>
+      ))}
       {notice && <div className={`banner ${notice.tone}`}>{notice.text}</div>}
       {reviewing && (
         <CalendarReview
@@ -444,6 +446,15 @@ export function Documents({ onChanged }: { onChanged?: () => void }) {
           );
         })}
       </div>
+      {mayManage && (
+        <details className="upload-fold" open={!docs.length}>
+          <summary className="btn soft"><Icon name="plus" size={15} /> Upload a document</summary>
+          <UploadForm onUploaded={(d) => {
+            setNotice({ tone: "ok", text: `Uploaded ${d.id}. It is being processed — this takes a few seconds for a long syllabus.` });
+            load();
+          }} />
+        </details>
+      )}
     </div>
   );
 }

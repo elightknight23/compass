@@ -214,6 +214,7 @@ export function Chat({ user, today, onChanged }: { user: User; today: string; on
           value={draft}
           placeholder="Write to Compass…"
           rows={1}
+          maxLength={2000}
           aria-label="Message"
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {

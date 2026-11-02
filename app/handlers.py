@@ -432,8 +432,8 @@ def handle_mess_menu(state: AgentState) -> dict:
     else:
         body = f"**{which}{whose} · {label}**\n\n" + "\n".join(_meal_lines(menu, weekday, mess.MEALS))
     if not menu["official"]:
-        body += (f"\n\n_This is a sample menu — {which}'s official menu hasn't been entered yet, "
-                 "so check the notice board before you rely on it._")
+        body += (f"\n\n*This is a sample menu — {which}'s official menu hasn't been entered yet, "
+                 "so check the notice board before you rely on it.*")
     trace = {"mess": {
         "heard": heard,
         "resolved": {"mess": which + (" (home mess)" if not named else ""),

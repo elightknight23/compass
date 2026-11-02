@@ -224,6 +224,16 @@ def main() -> int:
     check("  the reply event carries the full trace",
           events and "latency_ms" in events[-1][1]["debug"] and events[-1][1]["reply"])
 
+    section("what reaches the model is bounded")
+    for label, body in [("an empty message", {"message": ""}), ("a blank one", {"message": "  \n "}),
+                        ("one over 2,000 characters", {"message": "a" * 2001}), ("no message", {}),
+                        ("a number", {"message": 5})]:
+        check(f"{label}: 422, before any model call", ravi.post("/api/chat", json=body).status_code == 422)
+    r = ravi.post("/api/chat", json={"message": "hi", "history": [{"role": "assistant", "content": "x" * 9000}]})
+    check("a long earlier turn is trimmed, not refused (the conversation goes on)", r.status_code == 200)
+    health = TestClient(app).get("/api/health").json()
+    check("the open health check names no GitHub repository", "repo" not in health["tracker"], str(health))
+
     return finish("auth / HTTP")
 
 

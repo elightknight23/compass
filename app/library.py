@@ -100,12 +100,24 @@ def get_document(user: dict, document_id: str) -> dict:
 # ---------------------------------------------------------------------------
 # Upload
 # ---------------------------------------------------------------------------
+def title_from_filename(filename: str | None) -> str:
+    """A readable title when the uploader gave none. College portals name
+    downloads like '1_B.Tech_CSE-Curriculum_2024-7-19-15-40-32.pdf': the
+    leading serial and the trailing download timestamp go, underscores
+    become spaces. Anything left unreadable falls back to the bare name."""
+    stem = Path(filename or "document").stem
+    tidy = re.sub(r"[_\s-]*\d{4}-\d{1,2}-\d{1,2}(?:-\d{1,2}){2,3}$", "", stem)  # download timestamp
+    tidy = re.sub(r"^\d{1,3}[_\s-]+", "", tidy)                                      # leading serial
+    tidy = re.sub(r"\s+", " ", tidy.replace("_", " ")).strip(" -")
+    return tidy or stem
+
+
 def _clean_meta(filename: str, title: str | None, doc_type: str | None, branch: str | None,
                 semester, academic_year: str | None) -> dict | str:
     """Validated metadata, or the sentence explaining what is wrong."""
     if doc_type not in DOC_TYPES:
         return f"Document type must be one of: {', '.join(DOC_TYPES)}."
-    title = re.sub(r"\s+", " ", (title or "").strip()) or Path(filename or "document").stem
+    title = re.sub(r"\s+", " ", (title or "").strip()) or title_from_filename(filename)
     if len(title) > 200:
         return "The title is too long (200 characters at most)."
     code = documents.normalize_branch(branch) if branch not in (None, "") else "ALL"

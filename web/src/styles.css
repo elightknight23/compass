@@ -590,3 +590,10 @@ a.src:hover { text-decoration: underline; }
   .day-chip { flex: 1; min-width: 0; padding: 7px 0; font-size: 0.8rem; }
   .mess-top .seg { width: 100%; justify-content: space-between; }
 }
+
+/* -- documents: what waits first, the upload form folded below ------------- */
+.banner.waiting { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.upload-fold { margin-top: 18px; }
+.upload-fold > summary { list-style: none; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; margin-bottom: 12px; }
+.upload-fold > summary::-webkit-details-marker { display: none; }
+.upload-fold[open] > summary { margin-bottom: 12px; }
