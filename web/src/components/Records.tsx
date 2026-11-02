@@ -103,7 +103,7 @@ function CertificateLine({ r, mine, onChanged }: { r: CampusRecord; mine: boolea
 
 function TrackerLine({ r }: { r: CampusRecord }) {
   const t = r.tracker;
-  if (r.type !== "facility_complaint" || !t) return null;
+  if (!t) return null;
   if (t.url && t.issue)
     return (
       <a className="tracker" href={t.url} target="_blank" rel="noreferrer" title={t.synced ? "in step" : t.error ?? "sync pending"}>

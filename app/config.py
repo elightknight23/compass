@@ -39,10 +39,11 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 GEMINI_FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-3.1-flash-lite")
 
 # Read/write timeout, in seconds. Once a connection exists, a slow response
-# is a real fault: these prompts answer in about a second, so 30s is
-# generous and still fails inside a demo's patience. The SDK's own default
-# is 600s, which is indistinguishable from hanging.
-LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", "30"))
+# is a real fault: these prompts answer in 2-4 seconds, and a model that has
+# not answered in 12 is better abandoned for the fallback than waited on
+# (30s was tried: a hung primary made one leave request take 46s). The
+# SDK's own default is 600s, which is indistinguishable from hanging.
+LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", "12"))
 LLM_CONNECT_TIMEOUT = float(os.getenv("LLM_CONNECT_TIMEOUT", "15"))
 
 # How long an idle connection is held open. httpcore's default is FIVE
@@ -66,7 +67,18 @@ DATABASE_URL = os.getenv(
 # -- the complaint tracker mirror (app/tracker.py) — off unless both are set ---
 # GITHUB_REPO is "owner/name"; GITHUB_TOKEN a fine-grained token with
 # Issues: read and write on that one repository, nothing else.
-GITHUB_REPO = os.getenv("GITHUB_REPO", "").strip()
+
+
+def repo_slug(value: str) -> str:
+    """"owner/name" from that, or from the repo's URL as copied off GitHub."""
+    slug = value.strip().removesuffix("/").removesuffix(".git")
+    for prefix in ("https://github.com/", "http://github.com/", "github.com/", "git@github.com:"):
+        if slug.startswith(prefix):
+            return slug[len(prefix):]
+    return slug
+
+
+GITHUB_REPO = repo_slug(os.getenv("GITHUB_REPO", ""))
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "").strip()
 GITHUB_API = os.getenv("GITHUB_API", "https://api.github.com")
 GITHUB_TIMEOUT = float(os.getenv("GITHUB_TIMEOUT", "10"))

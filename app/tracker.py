@@ -1,16 +1,28 @@
-"""The complaint tracker — every facility complaint, mirrored to GitHub Issues.
+"""The tracker — every complaint and leave request, mirrored to GitHub Issues.
 
-The facilities crew works from an issue tracker; students and the warden
-work from Compass. Each complaint is also an issue in one repository
-(`GITHUB_REPO`), kept in step with the record:
+Staff can follow the desk from an issue tracker; students, the warden and
+the advisor work from Compass. Each record is also an issue in one
+repository (`GITHUB_REPO`), kept in step with it:
 
     issue title    "[CMP-1004] AC in the library reading room isn't working"
-    labels         compass, category:library, priority:high
-    state          open / closed — closed as `completed` when resolved and as
-                   `not_planned` when cancelled, so the tracker can tell a
-                   fix from a withdrawal (GitHub's own `state_reason`)
-    body           the complaint, its status and its history, with who acted
+                   "[OD-2001] OD · Wed 25 Nov – Fri 27 Nov · 3 working days"
+    labels         compass, type:complaint|leave, status:<status>, and
+                   category: + priority: for a complaint, leave: (+
+                   needs-exception, awaiting-certificate) for leave — so the
+                   repository filters like a queue
+    state          open while undecided; closed as `completed` when resolved
+                   or approved, and as `not_planned` otherwise, so the
+                   tracker can tell a fix from a withdrawal (GitHub's own
+                   `state_reason`)
+    body           the record, its status and its history, with who acted
                    by role, never by name
+
+**A leave request is mirrored without its reason.** The reason is a
+student's health or family business, and the certificate is the student's
+and the advisor's alone (app/certificates.py); neither leaves Compass. The
+issue says what kind of leave, when, for how many working days, and
+whether it waits on an exception or a certificate — no names, no
+percentages.
 
 **Compass is the source of truth; the mirror is one-way.** Decisions are
 made in Compass, where the role checks are (I1). Closing an issue on GitHub
@@ -27,8 +39,7 @@ record and its events and makes it so, so running it twice, or after a
 missed update, converges. An issue created before a demo reset (same
 Compass id) is found by its title and reused, not duplicated.
 
-Off unless GITHUB_REPO and GITHUB_TOKEN are both set. Leave requests are
-never mirrored: they are a student's academic record, not a work order.
+Off unless GITHUB_REPO and GITHUB_TOKEN are both set.
 """
 
 from __future__ import annotations
@@ -40,14 +51,33 @@ from datetime import datetime, timezone
 import httpx
 
 from . import backends, config
-from .backends import COMPLAINT, COMPLAINT_PREFIX
+from .backends import COMPLAINT, COMPLAINT_PREFIX, OD_PREFIX, OD_REQUEST
 
 LABEL = "compass"
-CLOSED_AS = {"resolved": "completed", "cancelled": "not_planned"}
+MIRRORED = (COMPLAINT, OD_REQUEST)
+OPEN = ("open", "submitted")
+DONE = ("resolved", "approved")  # closed as completed; anything else as not_planned
 ROLE_WORDS = {"student": "the student", "hostel_warden": "the hostel warden",
               "faculty_advisor": "the faculty advisor", "hod": "the HOD"}
-VERB_WORDS = {"file": "Filed", "amend": "Changed", "withdraw": "Withdrawn",
-              "resolve": "Resolved", "cancel": "Cancelled"}
+VERB_WORDS = {"file": "Filed", "submit": "Submitted", "amend": "Changed",
+              "withdraw": "Withdrawn", "resolve": "Resolved", "cancel": "Cancelled",
+              "approve": "Approved", "reject": "Rejected", "certificate": "Certificate"}
+LEAVE_NAMES = {"od": "OD", "medical": "Medical leave", "family_emergency": "Family-emergency leave"}
+
+# Colours and descriptions, so the repository's label list reads as a key.
+_STATUS = {"open": "e3b341", "submitted": "e3b341", "resolved": "3fb950", "approved": "3fb950",
+           "rejected": "cf222e", "withdrawn": "8c959f", "cancelled": "8c959f"}
+LABEL_STYLE = {
+    LABEL: ("1f6f5c", "Mirrored from Compass"),
+    "type:complaint": ("d97757", "A facility complaint"),
+    "type:leave": ("2f7d6d", "An OD or leave request (its reason stays in Compass)"),
+    "needs-exception": ("fb8500", "Below the attendance threshold: needs the advisor's exception"),
+    "awaiting-certificate": ("fbca04", "Medical leave with no certificate attached yet"),
+    "priority:high": ("cf222e", ""), "priority:medium": ("e3b341", ""), "priority:low": ("8c959f", ""),
+    "leave:od": ("6e7bd9", "On duty"), "leave:medical": ("d4a5c8", "Medical leave"),
+    "leave:family-emergency": ("b08968", "Family-emergency leave"),
+    **{f"status:{k}": (v, f"{k.title()} in Compass") for k, v in _STATUS.items()},
+}
 
 # Tests swap in an httpx.MockTransport, and run syncs inline.
 _transport: httpx.BaseTransport | None = None
@@ -70,10 +100,17 @@ def _now() -> str:
 # ---------------------------------------------------------------------------
 # What the issue should say
 # ---------------------------------------------------------------------------
+def _day(iso: str | None) -> str:
+    if not iso:
+        return "—"
+    d = datetime.fromisoformat(iso)
+    return f"{d:%a} {d.day} {d:%b}"
+
+
 def desired(record: dict, events: list[dict]) -> dict:
     """The issue, as the record says it should be. Pure."""
-    first = (record.get("notes") or "Facility complaint").strip().splitlines()[0]
-    title = f"[{record['id']}] {first[:80]}{'…' if len(first) > 80 else ''}"
+    leave = record.get("type") == OD_REQUEST
+    status = record["status"]
     roles = {u["id"]: u.get("role") for u in _directory()}
     history = [
         f"- {str(e.get('at') or '')[:10]} · {VERB_WORDS.get(e.get('verb'), str(e.get('verb')).title())}"
@@ -81,30 +118,57 @@ def desired(record: dict, events: list[dict]) -> dict:
         + (f" — {e['note']}" if e.get("note") else "")
         for e in events
     ]
+    if leave:
+        kind = record.get("leave_kind") or "od"
+        span = _day(record.get("start_date"))
+        if record.get("end_date") and record.get("end_date") != record.get("start_date"):
+            span += f" – {_day(record['end_date'])}"
+        days = record.get("working_days")
+        title = f"[{record['id']}] {LEAVE_NAMES.get(kind, kind)} · {span}" + (
+            f" · {days} working day{'s' if days != 1 else ''}" if days is not None else "")
+        rows = [
+            f"| Kind | {LEAVE_NAMES.get(kind, kind)} |",
+            f"| Dates | {span} |",
+            f"| Working days | {days if days is not None else '—'} |",
+            f"| Needs an attendance exception | {'yes' if record.get('needs_exception') else 'no'} |",
+            *([f"| Certificate | {'attached' if record.get('certificate') else 'not yet'} |"]
+              if kind == "medical" else []),
+        ]
+        intro = "A leave request. Its reason, and any certificate, stay in Compass."
+        labels = [f"leave:{kind.replace('_', '-')}",
+                  *(["needs-exception"] if record.get("needs_exception") and status in OPEN else []),
+                  *(["awaiting-certificate"] if kind == "medical" and not record.get("certificate")
+                    and status in OPEN else [])]
+    else:
+        first = (record.get("notes") or "Facility complaint").strip().splitlines()[0]
+        title = f"[{record['id']}] {first[:80]}{'…' if len(first) > 80 else ''}"
+        rows = [f"| Category | {record.get('category') or '—'} |",
+                f"| Priority | {record.get('priority') or '—'} |"]
+        intro = record.get("notes") or ""
+        labels = [f"category:{record.get('category') or 'other'}",
+                  f"priority:{record.get('priority') or 'medium'}"]
     body = "\n".join([
-        record.get("notes") or "",
+        intro,
         "",
         "| | |", "|---|---|",
         f"| Compass record | `{record['id']}` |",
-        f"| Status | **{record['status']}** |",
-        f"| Category | {record.get('category') or '—'} |",
-        f"| Priority | {record.get('priority') or '—'} |",
+        f"| Status | **{status}** |",
+        *rows,
         f"| Filed | {record.get('created_at') or '—'} |",
         "",
         "**History**",
         *(history or ["- (none yet)"]),
         "",
-        "<sub>Mirrored from Compass, which is where this complaint is decided. "
-        "Changes made here are not copied back.</sub>",
+        f"<sub>Mirrored from Compass, which is where this {'request' if leave else 'complaint'} "
+        "is decided. Changes made here are not copied back.</sub>",
     ])
-    state = "open" if record["status"] == "open" else "closed"
+    state = "open" if status in OPEN else "closed"
     return {
         "title": title,
         "body": body,
-        "labels": [LABEL, f"category:{record.get('category') or 'other'}",
-                   f"priority:{record.get('priority') or 'medium'}"],
+        "labels": [LABEL, f"type:{'leave' if leave else 'complaint'}", f"status:{status}", *labels],
         "state": state,
-        **({"state_reason": CLOSED_AS.get(record["status"], "completed")} if state == "closed" else {}),
+        **({"state_reason": "completed" if status in DONE else "not_planned"} if state == "closed" else {}),
     }
 
 
@@ -149,6 +213,28 @@ def _call(method: str, path: str, **kwargs) -> dict | list:
         raise TrackerError("GitHub sent back something that wasn't JSON") from None
 
 
+_labels_ready: set[str] = set()
+
+
+def _ensure_labels(names: list[str]) -> None:
+    """Give the labels this issue uses their colour and description, once.
+    GitHub would create a missing one anyway, grey and unexplained."""
+    missing = [n for n in names if n not in _labels_ready]
+    if not missing:
+        return
+    if not _labels_ready:
+        existing = _call("GET", "/labels", params={"per_page": 100})
+        _labels_ready.update(str(label.get("name")) for label in existing)
+        missing = [n for n in missing if n not in _labels_ready]
+    for name in missing:
+        color, description = LABEL_STYLE.get(name, ("c5d1dc", ""))
+        try:
+            _call("POST", "/labels", json={"name": name, "color": color, "description": description})
+        except TrackerError:
+            pass  # most likely it exists already; the issue still gets it
+        _labels_ready.add(name)
+
+
 def _find_existing(record_id: str) -> dict | None:
     """An issue this repository already has for this Compass id."""
     prefix = f"[{record_id}]"
@@ -171,12 +257,13 @@ def sync(record_id: str) -> dict:
         if not got["success"]:
             return got
         record = got["data"]
-        if record is None or record.get("type") != COMPLAINT:
+        if record is None or record.get("type") not in MIRRORED:
             return backends.ok(None, outcome="not_mirrored")
         events = backend.list_events(record_id)
         want = desired(record, events["data"] if events["success"] else [])
         state = dict(record.get("tracker") or {})
         try:
+            _ensure_labels(want["labels"])
             number = state.get("issue")
             if number is None:
                 found = _find_existing(record_id)
@@ -210,13 +297,13 @@ def schedule(record_id: str) -> None:
 
 
 def pending() -> list[str]:
-    res = backends.get_backend().list_all_records((COMPLAINT,))
+    res = backends.get_backend().list_all_records(MIRRORED)
     rows = res["data"] or [] if res["success"] else []
     return [r["id"] for r in rows if not (r.get("tracker") or {}).get("synced")]
 
 
 def sync_pending() -> dict:
-    """Every complaint not yet in step: never mirrored, or the last sync failed."""
+    """Every record not yet in step: never mirrored, or the last sync failed."""
     done = failed = 0
     for record_id in pending():
         res = sync(record_id)
@@ -247,12 +334,12 @@ def start_retry_loop(stop: threading.Event | None = None) -> threading.Event:
 
 
 class Mirrored:
-    """A record backend that schedules a sync after every complaint event.
+    """A record backend that schedules a sync after every record event.
 
-    Every complaint change in the handlers ends in append_event (file,
-    amend, withdraw, resolve, cancel), so that one hook covers chat and the
-    console alike, and cannot be forgotten by a new handler. It adds no
-    checks — backends stay dumb — it only notices.
+    Every change in the handlers ends in append_event (file, submit, amend,
+    withdraw, resolve, approve, reject, cancel, a certificate), so that one
+    hook covers chat and the console alike, and cannot be forgotten by a new
+    handler. It adds no checks — backends stay dumb — it only notices.
     """
 
     def __init__(self, inner) -> None:
@@ -264,7 +351,7 @@ class Mirrored:
 
     def append_event(self, record_id: str, *args, **kwargs) -> dict:
         res = self._inner.append_event(record_id, *args, **kwargs)
-        if enabled() and str(record_id).upper().startswith(COMPLAINT_PREFIX):
+        if enabled() and str(record_id).upper().startswith((COMPLAINT_PREFIX, OD_PREFIX)):
             # Out of step until the sync lands — recorded now, so a server
             # that dies before the thread runs leaves it for the retry loop.
             got = self._inner.get_record(record_id)

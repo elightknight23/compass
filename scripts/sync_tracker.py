@@ -1,10 +1,10 @@
-"""Bring every facility complaint's GitHub issue into step with Compass.
+"""Bring every complaint's and leave request's GitHub issue into step with Compass.
 
 The server already does this at startup and every TRACKER_RETRY_SECONDS;
 this is the same pass on demand — after fixing a token, say.
 
-    python scripts/sync_tracker.py           # complaints not yet in step
-    python scripts/sync_tracker.py --all     # every complaint, re-sent
+    python scripts/sync_tracker.py           # records not yet in step
+    python scripts/sync_tracker.py --all     # every record, re-sent
 """
 
 from __future__ import annotations
@@ -16,17 +16,17 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app import backends, tracker  # noqa: E402
-from app.backends import COMPLAINT  # noqa: E402
+from app.tracker import MIRRORED  # noqa: E402
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--all", action="store_true", help="re-send every complaint")
+    ap.add_argument("--all", action="store_true", help="re-send every record")
     args = ap.parse_args()
     if not tracker.enabled():
         print("tracker: off — set GITHUB_REPO and GITHUB_TOKEN in .env (see .env.example)")
         return 1
-    res = backends.get_backend().list_all_records((COMPLAINT,))
+    res = backends.get_backend().list_all_records(MIRRORED)
     if not res["success"]:
         print(f"records: unreachable ({res['error']})")
         return 1

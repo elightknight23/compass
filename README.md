@@ -121,16 +121,22 @@ policy, without creating anything.
   not a model: free-tier model inputs may be used by the provider, and a
   model's opinion that a document looks genuine is not evidence.
 
-### Complaints on GitHub Issues
+### Complaints and leave on GitHub Issues
 
 Set `GITHUB_REPO` and a fine-grained `GITHUB_TOKEN` (Issues: read and write,
-on one **private** repository) and every facility complaint is also an
-issue there:
+on one **private** repository) and every complaint and leave request is also
+an issue there:
 
-- **Labels and state.** Each issue is labelled `compass`,
-  `category:hostel`, `priority:high` and so on. It closes as *completed* when
-  resolved and *not planned* when withdrawn.
-- **Body.** It holds the complaint and its history by role (never by name).
+- **Labels, so the repository filters like a queue.** `type:complaint` or
+  `type:leave`, `status:open|submitted|resolved|approved|rejected|…`, then
+  `category:` and `priority:` for a complaint, or `leave:od|medical|family-emergency`
+  plus `needs-exception` and `awaiting-certificate` while those hold. Labels are
+  created with colours and descriptions.
+- **State.** Open while undecided; closed as *completed* when resolved or
+  approved, and *not planned* when rejected, withdrawn or cancelled.
+- **Body.** A complaint's text, or a leave's kind, dates and working days, with
+  its history by role (never by name). **A leave's reason and certificate never
+  leave Compass**, and neither does any attendance figure.
 - **Link back.** The record shows a link to its issue.
 
 The mirror is **one-way**. Compass decides, where the role checks are; closing
@@ -138,7 +144,7 @@ the issue on GitHub changes nothing here. A complaint is saved first and the
 issue follows on a background thread, so GitHub being slow or down never
 stops a student. The record says it is out of step, and a retry loop
 (startup, then every 5 minutes, or `scripts/sync_tracker.py`) catches it up
-without duplicates. Leave is never mirrored.
+without duplicates.
 
 ---
 
@@ -298,7 +304,7 @@ Refusals stay distinguishable, in chat and over HTTP:
 ## Testing and evaluation
 
 ```bash
-bash scripts/run_tests.sh       # 624 checks, no model, no network, ~2 min
+bash scripts/run_tests.sh       # 659 checks, no model, no network, ~2 min
 ```
 
 | Suite | Checks | Exercises |
@@ -306,10 +312,10 @@ bash scripts/run_tests.sh       # 624 checks, no model, no network, ~2 min
 | `test_staff_lookup.py` | 61 | the full 3 roles × 2 types × 4 verbs matrix; every refusal leaves the record unmoved |
 | `test_auth.py` | 63 | sessions, forged headers, scoped queues, refused POSTs asserted as 403 **and** an unchanged row, the SSE stream |
 | `test_backends.py` | 130 | one protocol suite (records, documents, calendar events) against JSON, SQLite and a real Postgres test database |
-| `test_documents.py` | 133 | extraction from real PDFs/DOCX, both syllabus layouts, every calendar date shape, the upload API by role, filtered retrieval, holidays in force |
+| `test_documents.py` | 153 | extraction from real PDFs/DOCX, both syllabus layouts, every calendar date shape (week grids too), the upload API by role, filtered retrieval, holidays in force |
 | `test_attendance.py` | 60 | the projection: OD raises, medical lowers, threshold crossing, held=0; which leave is granted; leave already taken is not counted twice |
 | `test_certificates.py` | 27 | who may attach and open a medical certificate, over HTTP; the warden's redacted copy; approval refused without one |
-| `test_tracker.py` | 26 | the GitHub mirror against a fake API: labels, close reasons, no names, GitHub down then back, no duplicates, leave never sent |
+| `test_tracker.py` | 41 | the GitHub mirror against a fake API: labels, close reasons, no names, GitHub down then back, no duplicates, leave without its reason |
 | `test_dates.py` | 36 | calendar arithmetic against a pinned clock, the holiday calendar, blank classifier fields |
 | `test_calendar.py` | 29 | `calendar_question` spans and answers per year of study; `document_question` filters and absence |
 | `test_amend.py` | 25 | amend and cancel, ownership, "the most recent open one" |
@@ -353,8 +359,8 @@ An unnamed limitation is the one that bites during questions.
   courses are filed under no semester, so a semester filter includes them.
 - **Certificates are not verified.** Compass checks the file type, not
   whether the certificate is genuine; the advisor reads it.
-- **The GitHub mirror is one-way**, and the issue body holds the complaint's
-  text — use a private repository.
+- **The GitHub mirror is one-way**, and the issue body holds a complaint's
+  text — use a private repository. Leave goes without its reason.
 - **Saturday working days** ("Saturday working, Monday order") are listed but
   not added to the working-day count. Only holidays subtract.
 - **Follow-ups lean on a 6-turn window.** "Yes, approve it as an exception"

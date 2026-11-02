@@ -35,6 +35,7 @@ REPO = "college/facilities"
 class FakeGitHub:
     def __init__(self) -> None:
         self.issues: dict[int, dict] = {}
+        self.labels: dict[str, dict] = {}
         self.calls: list[tuple[str, str]] = []
         self.down = False
         self.status: int | None = None  # force an error status
@@ -48,6 +49,12 @@ class FakeGitHub:
         assert request.headers["authorization"] == "Bearer test-token"
         base = f"/repos/{REPO}/issues"
         path = request.url.path
+        if path == f"/repos/{REPO}/labels":
+            if request.method == "GET":
+                return httpx.Response(200, json=list(self.labels.values()))
+            label = json.loads(request.content)
+            self.labels[label["name"]] = label
+            return httpx.Response(201, json=label)
         if request.method == "GET" and path == base:
             return httpx.Response(200, json=list(self.issues.values()))
         if request.method == "POST" and path == base:
@@ -83,6 +90,10 @@ def main() -> int:
     check("  a complaint is filed as usual, and nothing is sent", out["debug"]["outcome"] == "created"
           and not gh.calls and store.get_record(out["debug"]["record_id"])["data"]["tracker"] is None)
 
+    for pasted in ("me/tickets", "https://github.com/me/tickets", "https://github.com/me/tickets/",
+                   "https://github.com/me/tickets.git", "git@github.com:me/tickets.git"):
+        check(f"GITHUB_REPO={pasted!r} reads as me/tickets", config.repo_slug(pasted) == "me/tickets")
+
     config.GITHUB_REPO, config.GITHUB_TOKEN = REPO, "test-token"
     backends.get_backend = lambda: tracker.Mirrored(store)
     check("with both set, the backend is mirrored", tracker.enabled())
@@ -96,8 +107,12 @@ def main() -> int:
           issue is not None and rec["tracker"]["synced"] is True
           and rec["tracker"]["url"].endswith(f"/issues/{issue['number']}"), str(rec["tracker"]))
     check("  titled with the Compass id", issue is not None and issue["title"].startswith(f"[{cid}] AC in the library"))
-    check("  labelled compass / category / priority", issue is not None
-          and issue["labels"] == ["compass", "category:library", "priority:high"], str(issue and issue["labels"]))
+    check("  labelled compass / type / status / category / priority", issue is not None
+          and issue["labels"] == ["compass", "type:complaint", "status:open", "category:library", "priority:high"],
+          str(issue and issue["labels"]))
+    check("  and the labels are made with a colour and a description, not left grey",
+          gh.labels.get("type:complaint", {}).get("color") == "d97757"
+          and gh.labels["status:open"]["description"], str(gh.labels))
     check("  the body has the complaint and its history, by role",
           issue is not None and "isn't working" in issue["body"] and "Filed by the student" in issue["body"])
     check("  and never a name", issue is not None and "Priya" not in issue["body"] and "Sharma" not in issue["body"])
@@ -108,11 +123,16 @@ def main() -> int:
     st["entities"] = {"record_id": cid, "priority": "low"}
     handlers.handle_amend_record(st)
     check("amend: the priority label moves", gh.issues[1]["labels"][-1] == "priority:low", str(gh.issues[1]["labels"]))
+    labels_made = len(gh.labels)
     warden = users.get("U101")
     res = handlers.apply_staff_action(warden, cid, "resolve")
     check("resolve: the issue closes as completed",
           res["success"] and gh.issues[1]["state"] == "closed" and gh.issues[1]["state_reason"] == "completed")
     check("  and the history says who, by role", "Resolved by the hostel warden" in gh.issues[1]["body"])
+    check("  the status label follows", "status:resolved" in gh.issues[1]["labels"]
+          and "status:open" not in gh.issues[1]["labels"], str(gh.issues[1]["labels"]))
+    check("  and only labels new to the repository are created",
+          len(gh.labels) == labels_made + 1, str(sorted(gh.labels)))
     other = file("U001", "Bus 7 skipped my stop", category="transport")["debug"]["record_id"]
     st = new_state("cancel that", users.get("U001"))
     st["entities"] = {"record_id": other}
@@ -165,14 +185,42 @@ def main() -> int:
     check("a record that forgot its issue (demo reset) finds it by title — no duplicate",
           len(gh.issues) == count and store.get_record(down_id)["data"]["tracker"]["synced"] is True)
 
-    section("never mirrored")
-    gh.calls.clear()
-    check("leave requests are not complaints", tracker.sync("OD-2001").get("outcome") == "not_mirrored"
-          and not gh.calls)
-    st = new_state("OD Monday", users.get("U001"))
-    st["entities"] = {"leave_kind": "od", "start_date": "2026-11-02"}
-    handlers.handle_request_od_leave(st)
-    check("  and filing one sends nothing", not gh.calls)
+    section("leave: mirrored, without its reason")
+    st = new_state("medical leave Monday to Wednesday, viral fever", users.get("U001"))
+    st["entities"] = {"leave_kind": "medical", "start_date": "2026-11-02", "end_date": "2026-11-04",
+                      "reason": "Viral fever, doctor advised rest"}
+    lid = handlers.handle_request_od_leave(st)["debug"]["record_id"]
+    rec = store.get_record(lid)["data"]
+    issue = gh.issues.get((rec["tracker"] or {}).get("issue"))
+    check("a leave request becomes an issue", issue is not None and rec["tracker"]["synced"], str(rec["tracker"]))
+    check("  titled with its kind, dates and working days",
+          issue and issue["title"] == f"[{lid}] Medical leave · Mon 2 Nov – Wed 4 Nov · 3 working days",
+          issue and issue["title"])
+    check("  labelled as leave, waiting on an exception and a certificate", issue and issue["labels"] ==
+          ["compass", "type:leave", "status:submitted", "leave:medical", "needs-exception", "awaiting-certificate"],
+          issue and str(issue["labels"]))
+    check("  and the reason never leaves Compass",
+          issue and "fever" not in issue["body"].lower() and "doctor" not in issue["body"].lower()
+          and "fever" not in issue["title"].lower())
+    check("  nor a name, nor a percentage", issue and "Ravi" not in issue["body"] and "%" not in issue["body"])
+    from app import certificates
+    certificates.attach(users.get("U001"), lid, "note.pdf", b"%PDF-1.4 a certificate")
+    n = store.get_record(lid)["data"]["tracker"]["issue"]
+    check("attaching a certificate drops awaiting-certificate, and says so by role",
+          "awaiting-certificate" not in gh.issues[n]["labels"]
+          and "| Certificate | attached |" in gh.issues[n]["body"]
+          and "Certificate by the student" in gh.issues[n]["body"], str(gh.issues[n]["labels"]))
+    check("  but not the certificate's filename", "note.pdf" not in gh.issues[n]["body"])
+    handlers.apply_staff_action(users.get("U102"), lid, "approve", grant_exception=True)
+    check("approved: closed as completed, the waiting labels gone",
+          gh.issues[n]["state"] == "closed" and gh.issues[n]["state_reason"] == "completed"
+          and gh.issues[n]["labels"] == ["compass", "type:leave", "status:approved", "leave:medical"],
+          str(gh.issues[n]["labels"]))
+    handlers.apply_staff_action(users.get("U102"), "OD-2001", "reject")
+    n = store.get_record("OD-2001")["data"]["tracker"]["issue"]
+    check("rejected: closed as not_planned",
+          gh.issues[n]["state"] == "closed" and gh.issues[n]["state_reason"] == "not_planned"
+          and "status:rejected" in gh.issues[n]["labels"])
 
     tracker._transport, tracker.SYNC_INLINE = None, False
     config.GITHUB_REPO = config.GITHUB_TOKEN = ""
