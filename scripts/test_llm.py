@@ -58,6 +58,7 @@ def install(handler, *, fallback: str | None = FALLBACK) -> list[dict]:
     config.GEMINI_MODEL = PRIMARY
     config.GEMINI_FALLBACK_MODEL = fallback
     llm.client.cache_clear()
+    llm._cooling.clear()  # each case starts with no model cooling down
     fake = httpx.Client(transport=httpx.MockTransport(record))
     llm.http_client = lambda: fake  # type: ignore[assignment]
     return seen
@@ -82,6 +83,14 @@ def main() -> int:
     install(lambda b: completion(b["model"], "ok"), fallback=PRIMARY)
     check("a fallback equal to the primary is not tried twice",
           [p.name for p in llm.providers()] == [PRIMARY])
+    install(lambda b: completion(b["model"], "ok"), fallback=f" {FALLBACK}, third-model ,{PRIMARY},,")
+    check("a comma-separated list is several fallbacks, in order, without repeats or blanks",
+          [p.name for p in llm.providers()] == [PRIMARY, FALLBACK, "third-model"])
+    seen = install(lambda b: error(429) if b["model"] != "third-model" else completion(b["model"], "third"),
+                   fallback=f"{FALLBACK},third-model")
+    check("  and the chain goes on to the third when the first two are rate-limited",
+          llm.complete([{"role": "user", "content": "hi"}]) == ("third", "third-model")
+          and [b["model"] for b in seen] == [PRIMARY, FALLBACK, "third-model"])
 
     section("complete(): availability failures fall back")
     seen = install(lambda b: completion(b["model"], "hello"))
@@ -160,6 +169,77 @@ def main() -> int:
         check("parse with every model rate-limited -> LLMUnavailable", False)
     except llm.LLMUnavailable:
         check("parse with every model rate-limited -> LLMUnavailable", True)
+
+    section("hedging: a SLOW primary gets company, the first answer wins")
+    import time
+
+    def slow_primary(delay: float):
+        def handler(b):
+            if b["model"] == PRIMARY:
+                time.sleep(delay)
+            return completion(b["model"], f"from {b['model']}")
+        return handler
+
+    config.LLM_HEDGE_SECONDS = 0.2
+    seen = install(slow_primary(1.5))
+    started = time.perf_counter()
+    text, who = llm.complete([{"role": "user", "content": "hi"}])
+    took = time.perf_counter() - started
+    check("primary stalls 1.5s, hedge at 0.2s -> the fallback answers, and is named",
+          (text, who) == (f"from {FALLBACK}", FALLBACK), f"{who} {text}")
+    check("  in well under the stall", took < 1.0, f"{took:.2f}s")
+    check("  both were asked, the primary first", [b["model"] for b in seen][:2] == [PRIMARY, FALLBACK], str(seen))
+
+    def both_slow(b):
+        time.sleep(0.4 if b["model"] == PRIMARY else 1.5)
+        return completion(b["model"], f"from {b['model']}")
+
+    install(both_slow)
+    text, who = llm.complete([{"role": "user", "content": "hi"}])
+    check("a primary that answers after the hedge but before the fallback still wins", who == PRIMARY, who)
+
+    seen = install(lambda b: completion(b["model"], json.dumps({"word": "fast", "n": 1})))
+    obj, who = llm.parse([{"role": "user", "content": "x"}], Pair)
+    check("a prompt primary: no hedge, the fallback never asked", who == PRIMARY and len(seen) == 1, str(len(seen)))
+
+    def slow_parse(b):
+        if b["model"] == PRIMARY:
+            time.sleep(1.5)
+        return completion(b["model"], json.dumps({"word": b["model"], "n": 2}))
+
+    install(slow_parse)
+    obj, who = llm.parse([{"role": "user", "content": "x"}], Pair)
+    check("parse() hedges the same way", (obj.word, who) == (FALLBACK, FALLBACK), f"{obj} {who}")
+
+    install(lambda b: (time.sleep(0.4), error(503))[1] if b["model"] == PRIMARY else (time.sleep(0.6), error(503))[1])
+    try:
+        llm.complete([{"role": "user", "content": "hi"}])
+        check("hedged and both fail -> one LLMUnavailable naming both", False)
+    except llm.LLMUnavailable as e:
+        check("hedged and both fail -> one LLMUnavailable naming both", PRIMARY in str(e) and FALLBACK in str(e), str(e))
+
+    section("a rate-limited model waits its turn")
+    config.LLM_HEDGE_SECONDS = 0
+    llm._cooling.clear()
+    seen = install(lambda b: error(429, "Quota exceeded. Please retry in 30.5s.") if b["model"] == PRIMARY
+                   else completion(b["model"], "ok"))
+    llm.complete([{"role": "user", "content": "hi"}])
+    seen.clear()
+    _, who = llm.complete([{"role": "user", "content": "hi"}])
+    check("after a 429 that says 'retry in 30.5s', the next turn goes to the fallback first",
+          who == FALLBACK and [b["model"] for b in seen] == [FALLBACK], str([b["model"] for b in seen]))
+    check("  for no longer than it said (capped at a minute)",
+          29 < llm._cooling[PRIMARY] - time.monotonic() <= 31)
+    seen = install(lambda b: error(503) if b["model"] == FALLBACK else completion(b["model"], "primary after all"))
+    llm._cooling[PRIMARY] = time.monotonic() + 30  # still cooling, as above
+    check("  and the cooling model still answers if the others fail — moved to the back, not dropped",
+          llm.complete([{"role": "user", "content": "hi"}]) == ("primary after all", PRIMARY)
+          and [b["model"] for b in seen] == [FALLBACK, PRIMARY])
+    llm._cooling.clear()
+
+    seen = install(slow_primary(0.5))
+    text, who = llm.complete([{"role": "user", "content": "hi"}])
+    check("LLM_HEDGE_SECONDS=0: one at a time — the slow primary is waited for", who == PRIMARY and len(seen) == 1)
 
     return finish("llm provider chain")
 

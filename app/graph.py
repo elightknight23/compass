@@ -338,6 +338,8 @@ Rules:
     "What's for lunch tomorrow?" -> mess_menu, meal=lunch, day_offset=1
     "Dinner at IFC C on Friday?" -> mess_menu, mess=IFC C, meal=dinner,
                                     anchor_weekday=friday, week_offset=0
+    Meal TIMINGS are on the menu too: "When is dinner served?" -> mess_menu,
+    meal=dinner. Hostel GATE times and rules are document_question.
     "The dal in the mess was stale" -> file_complaint, category=hostel
 - A new problem is file_complaint; an existing one is check_status.
 - cancel_record vs staff_action turns on WHOSE record and WHY, not the verb.

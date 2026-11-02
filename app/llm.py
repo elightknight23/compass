@@ -20,7 +20,9 @@ Two things are deliberate:
    provider is tried when the current one is rate-limited, down,
    unreachable, or rejects the credentials — never because an answer looked
    wrong. A system that re-asks until it likes the answer is not a
-   classifier.
+   classifier. A provider that is merely *slow* gets company: after
+   LLM_HEDGE_SECONDS the next one is asked too and the first answer wins
+   (`_first_answer`), so a stalled call costs seconds, not the timeout.
 
 Structured output is requested natively first. If a provider rejects the
 schema (OpenAI-compatible layers vary in how much of JSON Schema they
@@ -33,16 +35,20 @@ merely looks right.
 from __future__ import annotations
 
 import json
+import re
 import sys
+import time
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import TypeVar
+from typing import Callable, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
 from . import config
 
 T = TypeVar("T", bound=BaseModel)
+R = TypeVar("R")
 
 
 @dataclass(frozen=True)
@@ -68,14 +74,17 @@ class ProviderMisbehaved(RuntimeError):
 
 
 def providers() -> list[Provider]:
-    """Configured providers, primary first. Without a key the chain is
-    empty; a blank or duplicate fallback model is simply absent. A provider
+    """Configured providers, primary first, then each fallback in the order
+    GEMINI_FALLBACK_MODEL lists them (comma-separated). Without a key the
+    chain is empty; a blank or duplicate model is simply absent. A provider
     is named by its model id, which is what the trace shows."""
     if not config.GEMINI_API_KEY:
         return []
     models = [config.GEMINI_MODEL]
-    if config.GEMINI_FALLBACK_MODEL and config.GEMINI_FALLBACK_MODEL not in models:
-        models.append(config.GEMINI_FALLBACK_MODEL)
+    for m in (config.GEMINI_FALLBACK_MODEL or "").split(","):
+        m = m.strip()
+        if m and m not in models:
+            models.append(m)
     return [
         Provider(m, config.GEMINI_BASE_URL, config.GEMINI_API_KEY, m)
         for m in models
@@ -197,6 +206,80 @@ def _parse_with(p: Provider, messages: list[dict], schema: type[T], temperature:
     return schema.model_validate_json(completion.choices[0].message.content or "")
 
 
+class _Unusable(Exception):
+    """This provider can't answer this call; the next one should try."""
+
+
+# A model that said "quota exceeded, retry in 40s" will say it again for
+# 40s. Until then it is tried LAST rather than first — not dropped, so it
+# still answers if everything else is down — and no turn pays its 429.
+_cooling: dict[str, float] = {}
+MAX_COOLDOWN_SECONDS = 60.0
+
+
+def _note_rate_limit(name: str, e: Exception) -> None:
+    import openai
+
+    if not isinstance(e, openai.RateLimitError):
+        return
+    m = re.search(r"retry in ([\d.]+)s", str(e))
+    wait_for = min(float(m.group(1)) if m else 10.0, MAX_COOLDOWN_SECONDS)
+    _cooling[name] = time.monotonic() + wait_for
+
+
+def _in_preference_order() -> list[Provider]:
+    now = time.monotonic()
+    chain = _require_providers()
+    return ([p for p in chain if _cooling.get(p.name, 0) <= now]
+            + [p for p in chain if _cooling.get(p.name, 0) > now])
+
+
+# Hedged attempts run here. Threads, not asyncio: the SDK client is
+# synchronous, and an abandoned attempt simply finishes in the background.
+_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="llm")
+
+
+def _first_answer(attempts: list[tuple[str, Callable[[], R]]]) -> tuple[R, str]:
+    """The first provider to answer, in order of preference.
+
+    The next provider starts when the current one FAILS — the fallback rule
+    — or when it is merely SLOW: after LLM_HEDGE_SECONDS without an answer
+    the next one is asked too, and whichever answers first is used. A model
+    that stalls for eight seconds then costs about four. A preferred
+    provider that answers after the hedge started still wins if it is
+    first. LLM_HEDGE_SECONDS=0 turns hedging off (strictly one at a time).
+
+    An attempt raises _Unusable for "try someone else"; anything else is a
+    bug in the call and is raised as it is.
+    """
+    hedge = config.LLM_HEDGE_SECONDS or None
+    queue = list(attempts)
+    running: dict = {}
+    failures: list[str] = []
+
+    def start() -> None:
+        name, fn = queue.pop(0)
+        running[_POOL.submit(fn)] = name
+
+    start()
+    while running:
+        done, _ = wait(list(running), timeout=hedge if queue else None, return_when=FIRST_COMPLETED)
+        if not done:  # still nothing: ask the next provider as well
+            _log(f"{', '.join(running.values())} slow after {hedge:g}s; also asking {queue[0][0]}")
+            start()
+            continue
+        for fut in done:
+            name = running.pop(fut)
+            try:
+                return fut.result(), name
+            except _Unusable as e:
+                failures.append(f"{name}: {e}")
+                _log(f"falling back after {failures[-1]}")
+                if queue and not running:
+                    start()
+    raise LLMUnavailable("; ".join(failures))
+
+
 def parse(
     messages: list[dict], schema: type[T], *, temperature: float = 0
 ) -> tuple[T, str]:
@@ -206,18 +289,20 @@ def parse(
     a model failure as "ask the user" rather than a crash, so one exception
     type is all they need to catch.
     """
-    failures: list[str] = []
-    for p in _require_providers():
-        try:
-            return _parse_with(p, messages, schema, temperature), p.name
-        except ValidationError as e:
-            failures.append(f"{p.name}: reply did not match the schema ({e.error_count()} errors)")
-        except Exception as e:  # noqa: BLE001 — classified just below
-            if not _is_availability_error(e):
-                raise
-            failures.append(f"{p.name}: {type(e).__name__}: {e}")
-        _log(f"falling back after {failures[-1]}")
-    raise LLMUnavailable("; ".join(failures))
+    def attempt(p: Provider) -> Callable[[], T]:
+        def run() -> T:
+            try:
+                return _parse_with(p, messages, schema, temperature)
+            except ValidationError as e:
+                raise _Unusable(f"reply did not match the schema ({e.error_count()} errors)") from e
+            except Exception as e:  # noqa: BLE001 — classified just below
+                if not _is_availability_error(e):
+                    raise
+                _note_rate_limit(p.name, e)
+                raise _Unusable(f"{type(e).__name__}: {e}") from e
+        return run
+
+    return _first_answer([(p.name, attempt(p)) for p in _in_preference_order()])
 
 
 def complete(
@@ -227,19 +312,21 @@ def complete(
     max_tokens: int | None = None,
 ) -> tuple[str, str]:
     """Free-text completion: (text, provider name). Same fallback rules."""
-    failures: list[str] = []
-    for p in _require_providers():
-        try:
-            resp = _completion(p, lambda: client(p.name).chat.completions.create(
-                model=p.model,
-                temperature=temperature,
-                messages=messages,
-                **({"max_tokens": max_tokens} if max_tokens else {}),
-            ))
-            return (resp.choices[0].message.content or "").strip(), p.name
-        except Exception as e:  # noqa: BLE001
-            if not _is_availability_error(e):
-                raise
-            failures.append(f"{p.name}: {type(e).__name__}: {e}")
-            _log(f"falling back after {failures[-1]}")
-    raise LLMUnavailable("; ".join(failures))
+    def attempt(p: Provider) -> Callable[[], str]:
+        def run() -> str:
+            try:
+                resp = _completion(p, lambda: client(p.name).chat.completions.create(
+                    model=p.model,
+                    temperature=temperature,
+                    messages=messages,
+                    **({"max_tokens": max_tokens} if max_tokens else {}),
+                ))
+            except Exception as e:  # noqa: BLE001
+                if not _is_availability_error(e):
+                    raise
+                _note_rate_limit(p.name, e)
+                raise _Unusable(f"{type(e).__name__}: {e}") from e
+            return (resp.choices[0].message.content or "").strip()
+        return run
+
+    return _first_answer([(p.name, attempt(p)) for p in _in_preference_order()])

@@ -36,7 +36,13 @@ GEMINI_BASE_URL = os.getenv(
     "GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/"
 )
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
-GEMINI_FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-3.1-flash-lite")
+# Fallbacks, in order, comma-separated. Each model has its own free-tier
+# quota (15 requests a minute each, at the time of writing), so every one
+# added is headroom for a busy demo. Gemma is slower (~6 s) but a different
+# family: the last resort when the flash models are rate-limited or busy.
+GEMINI_FALLBACK_MODEL = os.getenv(
+    "GEMINI_FALLBACK_MODEL", "gemini-3.1-flash-lite,gemini-flash-lite-latest,gemma-4-26b-a4b-it"
+)
 
 # Read/write timeout, in seconds. Once a connection exists, a slow response
 # is a real fault: these prompts answer in 2-4 seconds, and a model that has
@@ -50,6 +56,11 @@ LLM_CONNECT_TIMEOUT = float(os.getenv("LLM_CONNECT_TIMEOUT", "15"))
 # SECONDS — long enough to drop between two messages in a conversation, and
 # every drop costs another handshake. Ten minutes covers a whole demo.
 LLM_KEEPALIVE = float(os.getenv("LLM_KEEPALIVE", "600"))
+
+# After this many seconds without an answer, the next model is asked too,
+# and the first answer wins: a stalled call costs about this long, not the
+# full timeout. 0 turns it off (one model at a time, fallback on failure).
+LLM_HEDGE_SECONDS = float(os.getenv("LLM_HEDGE_SECONDS", "4"))
 
 # Retries inside the SDK, per provider. Zero on purpose: a 429 from the
 # primary is answered faster by the fallback than by waiting out a backoff.

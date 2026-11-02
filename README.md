@@ -214,12 +214,18 @@ Published on purpose. These are fictional accounts with no real data behind them
 ### The model: free, behind one interface
 
 `app/llm.py` talks to **Google AI Studio's** free tier over its
-OpenAI-compatible endpoint: `gemini-3.5-flash-lite` first, and
-`gemini-3.1-flash-lite` on the same key when the first is rate-limited or
-down (each model has its own free quota). The fallback is for availability
-only (rate limits, outages, a rejected key, a response that isn't a chat
-completion), never because an answer looked wrong. The trace records which
-model answered.
+OpenAI-compatible endpoint: `gemini-3.5-flash-lite` first, then
+`gemini-3.1-flash-lite`, `gemini-flash-lite-latest` and `gemma-4-26b-a4b-it` on
+the same key when the ones before are rate-limited or down. Each model has its
+own free quota (about 15 requests a minute), so four of them are also
+headroom for a busy demo. The fallback is for availability only (rate limits,
+outages, a rejected key, a response that isn't a chat completion), never
+because an answer looked wrong.
+
+Two rules keep it quick. A model that hasn't answered in 4 seconds gets
+company: the next one is asked too and whichever answers first is used. A
+model that said "quota exceeded, retry in 40s" is tried last until then. The
+trace records which model answered.
 
 Embeddings are **local**: all-MiniLM-L6-v2 on the ONNX runtime that ChromaDB
 ships. That means no hosted embedder, no rate limit, no network in retrieval,
@@ -264,7 +270,7 @@ app/
   attendance.py    the projection, and nothing else
   clock.py         the one definition of "today"
   auth.py          scrypt hashing, signed sessions, ROLE_CAPABILITIES
-  llm.py           Gemini primary + fallback model, one pooled client
+  llm.py           Gemini: primary, fallbacks in order, hedged; one pooled client
   warmup.py        pays cold-start cost on a background thread
   models.py        SQLAlchemy schema
   backends/        the swap boundary: postgres_backend, json_backend
@@ -321,7 +327,7 @@ Refusals stay distinguishable, in chat and over HTTP:
 ## Testing and evaluation
 
 ```bash
-bash scripts/run_tests.sh       # 753 checks, no model, no network, ~2 min
+bash scripts/run_tests.sh       # 766 checks, no model, no network, ~2 min
 ```
 
 | Suite | Checks | Exercises |
@@ -337,7 +343,7 @@ bash scripts/run_tests.sh       # 753 checks, no model, no network, ~2 min
 | `test_dates.py` | 36 | calendar arithmetic against a pinned clock, the holiday calendar, blank classifier fields |
 | `test_calendar.py` | 29 | `calendar_question` spans and answers per year of study; `document_question` filters and absence |
 | `test_amend.py` | 25 | amend and cancel, ownership, "the most recent open one" |
-| `test_llm.py` | 18 | the provider chain against a fake transport: 429 / 5xx / non-completion fall back, schema retry |
+| `test_llm.py` | 31 | the provider chain against a fake transport: 429 / 5xx / non-completion fall back, schema retry, several fallbacks, hedging a slow model, a rate-limited model tried last |
 | `test_rag.py` | 16 | chunking, stale-index detection (content and format), the planted-injection guard |
 
 Every suite runs against a throwaway copy of the seed data and blanks the
