@@ -214,6 +214,9 @@ def main() -> int:
           r.status_code == 200 and body["reply"] and "intent" in body["debug"], r.text[:200])
     check("  with no model reachable, it asks rather than guessing (clarify)",
           body["debug"].get("intent") == "clarify" and "classifier_error" in body["debug"])
+    check("  and says the model couldn't be reached — not 'which did you mean?'",
+          body["debug"].get("outcome") == "model_unavailable" and "couldn't reach" in body["reply"]
+          and "complaint" not in body["reply"], body["reply"])
     r = ravi.post("/api/chat", json={"message": "hello"},
                   headers={"Accept": "text/event-stream"})
     events = parse_sse(r.text)
@@ -223,6 +226,26 @@ def main() -> int:
           [e for e, _ in events] == ["classification", "reply"], str([e for e, _ in events]))
     check("  the reply event carries the full trace",
           events and "latency_ms" in events[-1][1]["debug"] and events[-1][1]["reply"])
+
+    section("signing out ends the session on the server too")
+    c = TestClient(app)
+    c.post("/api/login", json={"username": "ravi.kumar", "password": "ravi-demo"})
+    copied = c.cookies.get("compass_session")
+    phone = TestClient(app)
+    phone.post("/api/login", json={"username": "ravi.kumar", "password": "ravi-demo"})
+    c.post("/api/logout")
+    thief = TestClient(app)
+    thief.cookies.set("compass_session", copied)
+    check("a copy of the cookie taken before sign-out is refused after it: 401",
+          thief.get("/api/me").status_code == 401)
+    check("  but the same student's other session (their phone) is still signed in",
+          phone.get("/api/me").status_code == 200)
+    check("  a fresh sign-in works as usual",
+          c.post("/api/login", json={"username": "ravi.kumar", "password": "ravi-demo"}).status_code == 200
+          and c.get("/api/me").status_code == 200)
+    check("signing out with no session, or a forged one, is harmless",
+          TestClient(app).post("/api/logout").status_code == 200
+          and not auth.revoke_session("bogus.token"))
 
     section("what reaches the model is bounded")
     for label, body in [("an empty message", {"message": ""}), ("a blank one", {"message": "  \n "}),

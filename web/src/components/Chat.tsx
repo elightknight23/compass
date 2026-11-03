@@ -9,6 +9,24 @@ import { Trace } from "./Trace";
 
 const HISTORY_TURNS = 6; // matches app/graph.py — the classifier's sliding window
 
+// What Compass is doing, in words, once the classifier has said what was
+// asked — and the short name beside "Show the working". The intent's own id
+// stays inside the panel, where the seam is the point.
+const DOING: Record<string, [string, string]> = {
+  document_question: ["Looking it up in the College's documents", "documents"],
+  calendar_question: ["Checking the calendar", "calendar"],
+  mess_menu: ["Checking the mess menu", "mess menu"],
+  file_complaint: ["Filing your complaint", "complaint"],
+  request_od_leave: ["Working out the dates and your attendance", "leave"],
+  check_status: ["Looking up your records", "records"],
+  amend_record: ["Changing your request", "change"],
+  cancel_record: ["Withdrawing your request", "withdrawal"],
+  staff_action: ["Checking who may decide this", "staff action"],
+  clarify: ["Thinking about what you meant", "a question back"],
+  out_of_scope: ["Replying", "small talk"],
+};
+const SLOW_AFTER_MS = 8000;
+
 // Starting points, grouped by what the person came to do. Each group is a
 // different kind of answer: read from documents, worked out by code, or a
 // record created or changed.
@@ -42,6 +60,24 @@ const GROUPS: Record<string, Group[]> = {
   ],
 };
 
+/** The waiting line: what is happening, and an honest word if it's slow. */
+function Working({ intent }: { intent?: string }) {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setSlow(true), SLOW_AFTER_MS);
+    return () => clearTimeout(t);
+  }, []);
+  const doing = intent ? DOING[intent]?.[0] ?? "Working on it" : "Reading your message";
+  return (
+    <div className="note typing" role="status" aria-live="polite">
+      <span className="dot" /><span className="dot" /><span className="dot" />
+      <span className="doing">
+        {doing}…{slow && <span className="slow"> Still working — the model is busy right now.</span>}
+      </span>
+    </div>
+  );
+}
+
 function Turn({
   turn,
   onToggle,
@@ -68,10 +104,7 @@ function Turn({
       </div>
       <div className="bot-body">
         {turn.pending && !turn.content ? (
-          <div className="note typing">
-            <span /> <span /> <span />
-            {turn.trace?.intent && <em className="heard-pill">heard: {turn.trace.intent}</em>}
-          </div>
+          <Working intent={turn.trace?.intent} />
         ) : (
           <div className="note">
             <Rich text={turn.content} />
@@ -82,7 +115,9 @@ function Turn({
           <>
             <button className="reason-btn" onClick={onToggle} aria-expanded={open}>
               <span className="reason-label">{open ? "Hide the working" : "Show the working"}</span>
-              {turn.trace.intent && <span className="chip small muted">{turn.trace.intent}</span>}
+              {turn.trace.intent && (
+                <span className="chip small muted">{DOING[turn.trace.intent]?.[1] ?? turn.trace.intent}</span>
+              )}
               {turn.trace.authz === "denied" && <span className="chip small deny">refused</span>}
             </button>
             {open && <Trace d={turn.trace} live={turn.pending} />}

@@ -242,17 +242,23 @@ _POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="llm")
 def _first_answer(attempts: list[tuple[str, Callable[[], R]]]) -> tuple[R, str]:
     """The first provider to answer, in order of preference.
 
-    The next provider starts when the current one FAILS — the fallback rule
-    — or when it is merely SLOW: after LLM_HEDGE_SECONDS without an answer
-    the next one is asked too, and whichever answers first is used. A model
-    that stalls for eight seconds then costs about four. A preferred
-    provider that answers after the hedge started still wins if it is
-    first. LLM_HEDGE_SECONDS=0 turns hedging off (strictly one at a time).
+    The next provider starts when the current one FAILS — the fallback rule,
+    and at once — or when it is merely SLOW: after LLM_HEDGE_SECONDS without
+    an answer the next one is asked too, and whichever answers first is
+    used. A model that stalls for eight seconds then costs about four. A
+    preferred provider that answers after the hedge started still wins if it
+    is first. LLM_HEDGE_SECONDS=0 turns hedging off (strictly one at a time).
+
+    The whole call has a budget, LLM_BUDGET_SECONDS: when the service is
+    struggling everywhere, saying so after fifteen seconds beats saying so
+    after every provider's own timeout in turn.
 
     An attempt raises _Unusable for "try someone else"; anything else is a
     bug in the call and is raised as it is.
     """
     hedge = config.LLM_HEDGE_SECONDS or None
+    budget = config.LLM_BUDGET_SECONDS or None
+    deadline = time.monotonic() + budget if budget else None
     queue = list(attempts)
     running: dict = {}
     failures: list[str] = []
@@ -263,10 +269,18 @@ def _first_answer(attempts: list[tuple[str, Callable[[], R]]]) -> tuple[R, str]:
 
     start()
     while running:
-        done, _ = wait(list(running), timeout=hedge if queue else None, return_when=FIRST_COMPLETED)
-        if not done:  # still nothing: ask the next provider as well
-            _log(f"{', '.join(running.values())} slow after {hedge:g}s; also asking {queue[0][0]}")
-            start()
+        left = None if deadline is None else deadline - time.monotonic()
+        if left is not None and left <= 0:
+            failures.append(f"no answer within {budget:g}s from {', '.join(running.values())}")
+            _log(failures[-1])
+            break
+        hedge_now = hedge if queue else None
+        waits = [w for w in (hedge_now, left) if w is not None]
+        done, _ = wait(list(running), timeout=min(waits) if waits else None, return_when=FIRST_COMPLETED)
+        if not done:
+            if hedge_now is not None and (left is None or hedge_now < left):
+                _log(f"{', '.join(running.values())} slow after {hedge:g}s; also asking {queue[0][0]}")
+                start()
             continue
         for fut in done:
             name = running.pop(fut)
@@ -275,8 +289,8 @@ def _first_answer(attempts: list[tuple[str, Callable[[], R]]]) -> tuple[R, str]:
             except _Unusable as e:
                 failures.append(f"{name}: {e}")
                 _log(f"falling back after {failures[-1]}")
-                if queue and not running:
-                    start()
+                if queue:
+                    start()  # a failure hands over at once
     raise LLMUnavailable("; ".join(failures))
 
 

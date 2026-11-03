@@ -50,6 +50,7 @@ export function Login({ onLogin, message }: { onLogin: (u: User) => void; messag
             <li>Leave and OD, worked out against your attendance</li>
             <li>Hostel, lab and transport complaints, tracked to the end</li>
             <li>The syllabus and the calendar, answered with the page they came from</li>
+            <li>What IFC A to D are serving, today or any day</li>
           </ul>
         </div>
         <div className="cover-foot">Campus service desk</div>

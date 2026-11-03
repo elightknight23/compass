@@ -61,6 +61,10 @@ LLM_KEEPALIVE = float(os.getenv("LLM_KEEPALIVE", "600"))
 # and the first answer wins: a stalled call costs about this long, not the
 # full timeout. 0 turns it off (one model at a time, fallback on failure).
 LLM_HEDGE_SECONDS = float(os.getenv("LLM_HEDGE_SECONDS", "4"))
+# The most one model call may take, across every provider it tries. When
+# the service is struggling everywhere, the reply says so at this point
+# rather than after every provider's own timeout. 0 = no budget.
+LLM_BUDGET_SECONDS = float(os.getenv("LLM_BUDGET_SECONDS", "15"))
 
 # Retries inside the SDK, per provider. Zero on purpose: a 429 from the
 # primary is answered faster by the fallback than by waiting out a backoff.

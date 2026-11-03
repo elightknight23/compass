@@ -31,3 +31,4 @@ web/*.tsbuildinfo
 
 # local tooling config
 .DS_Store
+data/.revoked_sessions.json

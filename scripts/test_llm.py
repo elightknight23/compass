@@ -218,6 +218,25 @@ def main() -> int:
     except llm.LLMUnavailable as e:
         check("hedged and both fail -> one LLMUnavailable naming both", PRIMARY in str(e) and FALLBACK in str(e), str(e))
 
+    section("a budget for the whole call")
+    config.LLM_HEDGE_SECONDS, config.LLM_BUDGET_SECONDS = 0.2, 0.8
+    install(lambda b: (time.sleep(3), completion(b["model"], "too late"))[1], fallback=f"{FALLBACK},third-model")
+    started = time.perf_counter()
+    try:
+        llm.complete([{"role": "user", "content": "hi"}])
+        check("every model hanging -> LLMUnavailable once the budget is spent", False)
+    except llm.LLMUnavailable as e:
+        took = time.perf_counter() - started
+        check("every model hanging -> LLMUnavailable once the budget is spent, not after every timeout",
+              took < 1.5 and "no answer within 0.8s" in str(e), f"{took:.2f}s {e}")
+    seen = install(lambda b: error(503) if b["model"] == PRIMARY else (time.sleep(0.5), completion(b["model"], "ok"))[1])
+    config.LLM_HEDGE_SECONDS, config.LLM_BUDGET_SECONDS = 5, 0
+    started = time.perf_counter()
+    _, who = llm.complete([{"role": "user", "content": "hi"}])
+    check("a fast failure hands over at once, not after the hedge (5s here)",
+          who == FALLBACK and time.perf_counter() - started < 1.5, f"{time.perf_counter() - started:.2f}s")
+    config.LLM_BUDGET_SECONDS = 15
+
     section("a rate-limited model waits its turn")
     config.LLM_HEDGE_SECONDS = 0
     llm._cooling.clear()

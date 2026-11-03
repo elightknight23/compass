@@ -1485,7 +1485,18 @@ def _history_messages(state: AgentState, turns: int) -> list[dict]:
 
 def handle_clarify(state: AgentState) -> dict:
     """Ask ONE specific question. Vague help ("what do you need?") just
-    bounces the ambiguity back at the user. A designed outcome, not an error."""
+    bounces the ambiguity back at the user. A designed outcome, not an error.
+
+    Except when the classifier never reached a model: then the message was
+    never read, so asking "did you mean a complaint or leave?" would blame
+    the user's wording — and a second call to the same unreachable models
+    would only make them wait to hear it. Say what happened, at once."""
+    if (state.get("debug") or {}).get("classifier_error"):
+        return _out(
+            "I couldn't reach the language model just now, so I haven't been able to read your "
+            "message. Nothing was changed — please try again in a minute.",
+            outcome="model_unavailable",
+        )
     try:
         text, provider = llm.complete(
             [

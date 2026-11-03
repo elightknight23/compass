@@ -212,6 +212,32 @@ def protocol(kind: str) -> None:
           sorted(menus) == ["IFC A", "IFC B"] and menus["IFC B"]["week"]["monday"]["lunch"] == ["Biryani"]
           and menus["IFC B"]["updated_at"].startswith("2026-10-24"), str(menus.get("IFC B")))
 
+    # -- many writers at once ------------------------------------------------
+    # The server answers requests on a thread pool, so two students filing
+    # at the same moment is two threads in here. Ids are "highest + 1":
+    # without serialising that, Postgres lost 27 of 40 such filings.
+    import threading
+
+    made, failed = [], []
+
+    def file_one(i: int) -> None:
+        r = b.create_complaint(user_id="U001", notes=f"at once {i}", category="hostel", priority="low")
+        (made if r["success"] else failed).append(r["data"]["id"] if r["success"] else r["error"])
+
+    threads = [threading.Thread(target=file_one, args=(i,)) for i in range(25)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    check(f"{tag} 25 complaints filed at the same moment: all saved, every id different",
+          len(made) == 25 and len(set(made)) == 25 and not failed, f"{len(made)} saved, {failed[:1]}")
+    saves = []
+    threads = [threading.Thread(target=lambda i=i: saves.append(b.save_menu(
+        f"IFC {'CD'[i % 2]}", {"week": {"monday": {"lunch": [str(i)]}}, "timings": {},
+                               "updated_by": "U101", "updated_at": None})["success"])) for i in range(20)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    check(f"{tag}   and 20 menu saves at once, two of them first saves of a mess: all land",
+          saves.count(True) == 20 and {"IFC C", "IFC D"} <= {m["mess"] for m in b.list_menus()["data"]})
+
     if kind != "json":
         # The demo reset re-seeds Postgres; the College's documents survive it.
         from seed_db import seed

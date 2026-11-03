@@ -177,7 +177,10 @@ def login(req: LoginRequest, response: Response):
 
 
 @app.post("/api/logout")
-def logout(response: Response):
+def logout(response: Response, compass_session: str | None = Cookie(default=None)):
+    # The server forgets this session too: deleting the cookie alone would
+    # leave any copy of it valid until it expired.
+    auth.revoke_session(compass_session)
     response.delete_cookie(auth.SESSION_COOKIE, path="/")
     return {"ok": True}
 

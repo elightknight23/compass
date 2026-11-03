@@ -30,7 +30,9 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 import secrets
+import threading
 import time
 from . import backends, config, users
 
@@ -124,7 +126,8 @@ def issue_session(user_id: str, ttl: int | None = None) -> str:
     """
     ttl = ttl if ttl is not None else config.SESSION_TTL
     payload = json.dumps(
-        {"sub": user_id, "iat": int(time.time()), "exp": int(time.time()) + ttl},
+        {"sub": user_id, "iat": int(time.time()), "exp": int(time.time()) + ttl,
+         "sid": secrets.token_urlsafe(12)},
         separators=(",", ":"),
     ).encode()
     sig = hmac.new(config.session_secret(), payload, hashlib.sha256).digest()
@@ -156,7 +159,58 @@ def read_session(token: str | None) -> dict | None:
         return None
     if int(claims.get("exp", 0)) < time.time():
         return None
+    if claims.get("sid") in _revoked():
+        return None
     return users.get(claims.get("sub"))
+
+
+# ---------------------------------------------------------------------------
+# Signing out — the server forgets the session, not just the browser
+# ---------------------------------------------------------------------------
+# A signed token is valid until it expires, wherever it is copied to. So
+# signing out records the session's id as revoked, until the moment it would
+# have expired anyway; a copy of the cookie (a shared lab computer, a
+# forwarded screenshot of devtools) stops working at once. Only that session
+# ends: the same student on their phone stays signed in. The list is kept in
+# a file so a restart doesn't forgive it, and pruned of expired entries.
+_REVOKED_LOCK = threading.Lock()
+_revoked_cache: dict[str, int] | None = None
+
+
+def _revoked_path():
+    return config.DATA_DIR / ".revoked_sessions.json"
+
+
+def _revoked() -> dict[str, int]:
+    global _revoked_cache
+    if _revoked_cache is None:
+        try:
+            _revoked_cache = json.loads(_revoked_path().read_text())
+        except (OSError, ValueError):
+            _revoked_cache = {}
+    return _revoked_cache
+
+
+def revoke_session(token: str | None) -> bool:
+    """Forget this session server-side. False if the token isn't a valid one."""
+    if not token or "." not in token or read_session(token) is None:
+        return False
+    claims = json.loads(_unb64u(token.rsplit(".", 1)[0]))
+    if not claims.get("sid"):
+        return False
+    now = int(time.time())
+    with _REVOKED_LOCK:
+        live = {sid: exp for sid, exp in _revoked().items() if exp > now}
+        live[claims["sid"]] = int(claims["exp"])
+        global _revoked_cache
+        _revoked_cache = live
+        try:
+            tmp = _revoked_path().with_suffix(".tmp")
+            tmp.write_text(json.dumps(live))
+            os.replace(tmp, _revoked_path())
+        except OSError:
+            pass  # still revoked in this process; a restart would forget it
+    return True
 
 
 # ---------------------------------------------------------------------------

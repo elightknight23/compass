@@ -222,10 +222,13 @@ headroom for a busy demo. The fallback is for availability only (rate limits,
 outages, a rejected key, a response that isn't a chat completion), never
 because an answer looked wrong.
 
-Two rules keep it quick. A model that hasn't answered in 4 seconds gets
+Three rules keep it quick. A model that hasn't answered in 4 seconds gets
 company: the next one is asked too and whichever answers first is used. A
-model that said "quota exceeded, retry in 40s" is tried last until then. The
-trace records which model answered.
+model that said "quota exceeded, retry in 40s" is tried last until then. And
+one call has 15 seconds in all: when Google is struggling everywhere, the
+reply says so then, rather than after every model's own timeout. If the
+classifier can't reach any model, the reply says exactly that — it doesn't
+ask the student what they meant. The trace records which model answered.
 
 Embeddings are **local**: all-MiniLM-L6-v2 on the ONNX runtime that ChromaDB
 ships. That means no hosted embedder, no rate limit, no network in retrieval,
@@ -327,14 +330,14 @@ Refusals stay distinguishable, in chat and over HTTP:
 ## Testing and evaluation
 
 ```bash
-bash scripts/run_tests.sh       # 766 checks, no model, no network, ~2 min
+bash scripts/run_tests.sh       # 779 checks, no model, no network, ~2 min
 ```
 
 | Suite | Checks | Exercises |
 | :--- | ---: | :--- |
 | `test_staff_lookup.py` | 61 | the full 3 roles × 2 types × 4 verbs matrix; every refusal leaves the record unmoved |
-| `test_auth.py` | 70 | sessions, forged headers, scoped queues, refused POSTs asserted as 403 **and** an unchanged row, the SSE stream |
-| `test_backends.py` | 139 | one protocol suite (records, documents, calendar events, mess menus) against JSON, SQLite and a real Postgres test database |
+| `test_auth.py` | 75 | sessions, forged headers, scoped queues, refused POSTs asserted as 403 **and** an unchanged row, the SSE stream |
+| `test_backends.py` | 145 | one protocol suite (records, documents, calendar events, mess menus) against JSON, SQLite and a real Postgres test database |
 | `test_documents.py` | 167 | extraction from real PDFs/DOCX, both syllabus layouts, every calendar date shape (week grids too), adding and removing dates in review, the upload API by role, filtered retrieval, holidays in force |
 | `test_attendance.py` | 60 | the projection: OD raises, medical lowers, threshold crossing, held=0; which leave is granted; leave already taken is not counted twice |
 | `test_certificates.py` | 27 | who may attach and open a medical certificate, over HTTP; the warden's redacted copy; approval refused without one |
@@ -343,7 +346,7 @@ bash scripts/run_tests.sh       # 766 checks, no model, no network, ~2 min
 | `test_dates.py` | 36 | calendar arithmetic against a pinned clock, the holiday calendar, blank classifier fields |
 | `test_calendar.py` | 29 | `calendar_question` spans and answers per year of study; `document_question` filters and absence |
 | `test_amend.py` | 25 | amend and cancel, ownership, "the most recent open one" |
-| `test_llm.py` | 31 | the provider chain against a fake transport: 429 / 5xx / non-completion fall back, schema retry, several fallbacks, hedging a slow model, a rate-limited model tried last |
+| `test_llm.py` | 33 | the provider chain against a fake transport: 429 / 5xx / non-completion fall back, schema retry, several fallbacks, hedging a slow model, a rate-limited model tried last |
 | `test_rag.py` | 16 | chunking, stale-index detection (content and format), the planted-injection guard |
 
 Every suite runs against a throwaway copy of the seed data and blanks the

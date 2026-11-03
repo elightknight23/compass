@@ -24,6 +24,9 @@ the protocol tests need no running server.
 
 from __future__ import annotations
 
+import random
+import threading
+import time
 from typing import Any
 
 from sqlalchemy import create_engine, func, select
@@ -112,6 +115,19 @@ class PostgresBackend:
     def _db(self) -> Session:
         return self._session()
 
+    # Ids are "the highest so far, plus one", read and written in one
+    # transaction — so two writers at the same moment compute the same id,
+    # and the primary key refuses one. Measured: 27 of 40 simultaneous
+    # filings failed with two retries. Within one server process the lock
+    # makes them take turns (a few milliseconds each); across processes,
+    # jittered retries settle the rest.
+    _ALLOCATE = threading.Lock()
+    ALLOCATE_ATTEMPTS = 8
+
+    @staticmethod
+    def _backoff(attempt: int) -> None:
+        time.sleep(random.uniform(0.005, 0.02) * (attempt + 1))
+
     @staticmethod
     def _unavailable(e: Exception) -> dict:
         # The message may reach a user, so it names the failure, not the URL
@@ -128,11 +144,9 @@ class PostgresBackend:
         prefix, start = (
             (COMPLAINT_PREFIX, 1001) if record_type == COMPLAINT else (OD_PREFIX, 2001)
         )
-        # Two writers can compute the same next id; the primary key refuses
-        # the second, and one retry with a fresh read settles it.
-        for _ in range(2):
+        for attempt in range(self.ALLOCATE_ATTEMPTS):
             try:
-                with self._db() as db, db.begin():
+                with self._ALLOCATE, self._db() as db, db.begin():
                     row = Record(
                         id=self._next_id(db, prefix, start),
                         type=record_type,
@@ -142,6 +156,7 @@ class PostgresBackend:
                     db.add(row)
                 return ok(_as_dict(row), backend=self.name)
             except IntegrityError:
+                self._backoff(attempt)
                 continue
             except SQLAlchemyError as e:
                 return self._unavailable(e)
@@ -296,9 +311,9 @@ class PostgresBackend:
 
     def create_document(self, **fields: Any) -> dict:
         fields = {k: v for k, v in fields.items() if k in DOCUMENT_FIELDS and k != "id"}
-        for _ in range(2):  # same id race as _insert
+        for attempt in range(self.ALLOCATE_ATTEMPTS):  # same id race as _insert
             try:
-                with self._db() as db, db.begin():
+                with self._ALLOCATE, self._db() as db, db.begin():
                     ids = db.scalars(select(Document.id)).all()
                     used = [int(i[len(DOCUMENT_PREFIX):]) for i in ids
                             if i[len(DOCUMENT_PREFIX):].isdigit()]
@@ -307,6 +322,7 @@ class PostgresBackend:
                     db.add(row)
                 return ok(_doc_dict(row), backend=self.name)
             except IntegrityError:
+                self._backoff(attempt)
                 continue
             except SQLAlchemyError as e:
                 return self._unavailable(e)
@@ -413,17 +429,24 @@ class PostgresBackend:
 
     def save_menu(self, mess: str, menu: dict) -> dict:
         fields = {k: menu.get(k) for k in self.MENU_FIELDS if k != "mess"}
-        try:
-            with self._db() as db, db.begin():
-                row = db.get(MessMenu, mess)
-                if row is None:
-                    row = MessMenu(mess=mess, **fields)
-                    db.add(row)
-                else:
-                    for k, v in fields.items():
-                        setattr(row, k, v)
-                db.flush()
-                stored = {k: getattr(row, k) for k in self.MENU_FIELDS}
-            return ok(stored, backend=self.name)
-        except SQLAlchemyError as e:
-            return self._unavailable(e)
+        # Two first saves of the same mess both see no row and both insert;
+        # the loser retries, finds the row, and updates it.
+        for attempt in range(self.ALLOCATE_ATTEMPTS):
+            try:
+                with self._ALLOCATE, self._db() as db, db.begin():
+                    row = db.get(MessMenu, mess)
+                    if row is None:
+                        row = MessMenu(mess=mess, **fields)
+                        db.add(row)
+                    else:
+                        for k, v in fields.items():
+                            setattr(row, k, v)
+                    db.flush()
+                    stored = {k: getattr(row, k) for k in self.MENU_FIELDS}
+                return ok(stored, backend=self.name)
+            except IntegrityError:
+                self._backoff(attempt)
+                continue
+            except SQLAlchemyError as e:
+                return self._unavailable(e)
+        return fail("could not save the menu; please retry", UNAVAILABLE)
