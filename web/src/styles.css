@@ -486,6 +486,8 @@ a.tracker:hover { text-decoration: underline; }
 .upcoming-list li { display: grid; grid-template-columns: 10px 118px 1fr; gap: 8px; align-items: baseline; font-size: 0.86rem; }
 .upcoming-list .when { font-weight: 600; white-space: nowrap; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); align-self: center; }
+/* top-aligned with the date, so a name that wraps keeps its dot on the first line */
+.upcoming-list .dot { align-self: start; margin-top: 0.42em; }
 .dot.holiday { background: var(--moss); }
 .dot.exam { background: var(--marigold); }
 .dot.semester_start, .dot.semester_end { background: var(--pine); }
