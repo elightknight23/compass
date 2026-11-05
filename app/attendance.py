@@ -46,6 +46,7 @@ class Projection:
 
     added_periods: int
     added_present: int
+    other_absent_days: int  # the student's other un-condoned leave still to come
     current_pct: float | None  # None when nothing has been held yet
     projected_pct: float | None
 
@@ -91,8 +92,16 @@ def project(
     condoned: bool,
     periods_per_day: int | None = None,
     threshold: float | None = None,
+    other_absent_days: int = 0,
 ) -> Projection:
     """The projection in the README ("The attendance rule"). Never raises for sane inputs.
+
+    `other_absent_days` is un-condoned leave the student already has on file
+    (submitted or approved) that is still to come. Each request projected on
+    its own would let two one-day requests each "keep you above 75%" while
+    together they don't; those days are absences as surely as this request's
+    are. Other OD is left out on purpose: it can only raise the figure, and
+    a pending one isn't granted yet.
 
     Negative inputs are clamped to zero rather than trusted: they can only
     come from bad seed data, and a negative period count would produce a
@@ -104,12 +113,13 @@ def project(
     attended = max(0, int(attended))
     held = max(attended, int(held))  # you cannot attend more than was held
     days = max(0, int(working_days))
+    other = max(0, int(other_absent_days))
 
     added = days * max(0, ppd)
     present = added if condoned else 0
 
     current = attended / held if held else None
-    total = held + added
+    total = held + other * max(0, ppd) + added
     projected = (attended + present) / total if total else None
 
     return Projection(
@@ -121,6 +131,7 @@ def project(
         threshold=thr,
         added_periods=added,
         added_present=present,
+        other_absent_days=other,
         current_pct=current,
         projected_pct=projected,
     )

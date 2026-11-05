@@ -913,7 +913,8 @@ def _describe(record: dict, owner: dict | None = None) -> str:
 # ---------------------------------------------------------------------------
 # request_od_leave — the attendance projection, computed in Python
 # ---------------------------------------------------------------------------
-def _projection_sentence(proj: attendance.Projection, kind: str) -> str:
+def _projection_sentence(proj: attendance.Projection, kind: str,
+                         others: dict[str, int] | None = None) -> str:
     """The sentence the whole domain change exists to produce.
 
     Every number in it falls out of attendance.project against the
@@ -927,7 +928,9 @@ def _projection_sentence(proj: attendance.Projection, kind: str) -> str:
 
     if proj.working_days == 0:
         # All the days are behind us, so already counted as absences.
-        tail = (f" You are below the {need} requirement, so the advisor will "
+        short = (f"Counting your other leave on file you'd be at **{then}**, below"
+                 if others else "You are below")
+        tail = (f" {short} the {need} requirement, so the advisor will "
                 "need to approve it as an exception." if proj.below_threshold else "")
         return (f"Those days are already in your attendance as absences, so this "
                 f"doesn't change your **{now}** — approval records them as "
@@ -939,6 +942,11 @@ def _projection_sentence(proj: attendance.Projection, kind: str) -> str:
         )
     else:
         lead = f"You are at **{now}**. {days} of {what} takes you to **{then}**"
+    if others:
+        # Named, so the student can see why the number is lower than this
+        # request alone would make it.
+        lead += (" once your other leave on file is counted ("
+                 + ", ".join(f"{rid}, {_days(n)}" for rid, n in others.items()) + ")")
 
     if proj.below_threshold:
         return (
@@ -946,6 +954,25 @@ def _projection_sentence(proj: attendance.Projection, kind: str) -> str:
             "the advisor's exception."
         )
     return f"{lead}, which keeps you above the {need} requirement."
+
+
+LIVE_LEAVE = {"submitted", "approved"}  # leave that will still be taken
+
+
+def _leave_on_file(user_id: str) -> dict:
+    """The student's submitted and approved leave: a backend envelope."""
+    res = backends.get_backend().list_records_for_user(user_id, (OD_REQUEST,))
+    if res["success"]:
+        res = backends.ok([r for r in res["data"] or [] if r.get("status") in LIVE_LEAVE])
+    return res
+
+
+def _days_still_ahead(record: dict, today: date, hols) -> int:
+    """Working days of one leave request from today on: the part not yet in
+    the attendance figures."""
+    start = max(date.fromisoformat(record["start_date"]), today)
+    end = date.fromisoformat(record["end_date"])
+    return dates.working_days(start, end, hols) if end >= start else 0
 
 
 def handle_request_od_leave(state: AgentState) -> dict:
@@ -1045,6 +1072,34 @@ def handle_request_od_leave(state: AgentState) -> dict:
             outcome="no_working_days", **trace,
         )
 
+    # What the student already has on file. A request over the same days is
+    # not a second request (often it is the first one, re-sent while the
+    # reply was slow), and one-day requests filed separately must add up.
+    on_file = _leave_on_file(user["id"])
+    if not on_file["success"]:
+        return _out(
+            "I couldn't reach the records system to check your other leave, so "
+            "nothing was submitted — please try again shortly.",
+            error=on_file["error"], outcome="read_failed", **trace,
+        )
+    clash = next((r for r in sorted(on_file["data"], key=_recency_key)
+                  if r["start_date"] <= end.isoformat() and start.isoformat() <= r["end_date"]),
+                 None)
+    if clash:
+        return _out(
+            f"You already have **{clash['id']}** — "
+            f"{LEAVE_NAMES.get(clash['leave_kind'], 'leave')}, "
+            f"{_span(date.fromisoformat(clash['start_date']), date.fromisoformat(clash['end_date']))}, "
+            f"**{clash['status']}** — covering those days, so I haven't filed another. "
+            "To change it, withdraw that one and apply again.",
+            outcome="overlaps", authz="allowed", overlaps=clash["id"], **trace,
+        )
+    others = {r["id"]: _days_still_ahead(r, today, hols) for r in on_file["data"]
+              if not attendance.is_condoned(r.get("leave_kind"))}
+    others = {rid: n for rid, n in others.items() if n}
+    if others:
+        trace["other_leave_counted"] = others
+
     backend = backends.get_backend()
     att = backend.get_attendance(user["id"])
     if not att["success"]:
@@ -1072,6 +1127,7 @@ def handle_request_od_leave(state: AgentState) -> dict:
         proj = attendance.project(
             att["data"]["attended"], att["data"]["held"], ahead,
             condoned=attendance.is_condoned(kind),
+            other_absent_days=sum(others.values()),
         )
         trace["attendance"] = proj.as_dict()
 
@@ -1114,7 +1170,7 @@ def handle_request_od_leave(state: AgentState) -> dict:
         "it isn't granted until your advisor approves it."
     )
     body = (
-        _projection_sentence(proj, kind)
+        _projection_sentence(proj, kind, others)
         if proj
         else "I couldn't find your attendance on file, so the advisor will "
         "need to check it by hand."
@@ -1314,13 +1370,20 @@ ACTION_LOOKS_AT = {
 }
 
 
-def _find_target_record(name: str | None, action: str) -> tuple[str | None, str | None]:
+def _find_target_record(
+    name: str | None, action: str, leave_kind: str | None = None
+) -> tuple[str | None, str | None]:
     """Resolve "Ravi" to the record this action means: (record_id, problem).
 
     Which record depends on the verb — "resolve Ravi's" is about a
-    complaint, "approve Ravi's" about leave. Resolving the name is only a
+    complaint, "approve Ravi's" about leave — and on the kind of leave, when
+    one was named ("Ravi's medical leave"). Resolving the name is only a
     lookup; whether the caller may act on what it finds is apply_staff_action's
     question, asked separately.
+
+    More than one candidate left is a question, not a pick. This is a staff
+    decision on someone else's record: approving the wrong one is not
+    something a reply can undo.
     """
     if not name:
         return None, None
@@ -1344,8 +1407,16 @@ def _find_target_record(name: str | None, action: str) -> tuple[str | None, str 
         )
         return None, f"{target['name']} has no {wanted} to {action}."
 
-    # Most recent wins, same rule as a bare amendment.
-    return max(candidates, key=_recency_key)["id"], None
+    if leave_kind:
+        of_kind = [r for r in candidates if r.get("leave_kind") == leave_kind]
+        # "OD request" is also what people call any leave here (the ids are
+        # OD-…), so a kind that matches nothing narrows nothing.
+        candidates = of_kind or candidates
+    if len(candidates) > 1:
+        listing = "\n".join(f"- {_describe_short(r)}" for r in sorted(candidates, key=_recency_key))
+        return None, (f"{target['name']} has {len(candidates)} that could be — which one "
+                      f"should I {action}?\n{listing}\n\nGive me the ID.")
+    return candidates[0]["id"], None
 
 
 _RECORD_ID_RE = re.compile(r"\b(?:OD|CMP)-\d{4}\b", re.I)
@@ -1380,6 +1451,7 @@ def handle_staff_action(state: AgentState) -> dict:
 
     entities = state["entities"]
     action = entities.get("action")
+    record_id = entities.get("record_id")
     if not action:
         # Not defaulted. The predecessor assumed "approve" when no verb was
         # heard, which is a guess that writes.
@@ -1392,8 +1464,12 @@ def handle_staff_action(state: AgentState) -> dict:
     # looking, rather than "Ravi has no open complaints to resolve" — true,
     # and an answer about the wrong thing. `cancel` spans both types, so it
     # falls through to the post-read check, which knows what it got.
+    # Only when no record was named: with an id in hand, apply_staff_action
+    # reads it and answers in I3 order, so "approve CMP-1001" from the warden
+    # is "a complaint can't be approved — try resolve", not a sentence about
+    # leave she never mentioned.
     needed = ACTION_APPLIES_TO.get(action, set())
-    if needed and not any(auth.may_action(user, t) for t in needed):
+    if not record_id and needed and not any(auth.may_action(user, t) for t in needed):
         kind = next(iter(needed))
         return _out(
             f"I can't {action} that — {TYPE_PLURAL.get(kind, 'those records')} "
@@ -1405,9 +1481,10 @@ def handle_staff_action(state: AgentState) -> dict:
             outcome="not_authorized",
         )
 
-    record_id = entities.get("record_id")
     if not record_id:
-        record_id, problem = _find_target_record(entities.get("target_person"), action)
+        record_id, problem = _find_target_record(
+            entities.get("target_person"), action, entities.get("leave_kind")
+        )
         if problem:
             return _out(problem, authz="allowed", outcome="needs_target")
         if record_id is None and entities.get("grant_exception"):

@@ -256,6 +256,20 @@ def main() -> int:
           and [b["model"] for b in seen] == [FALLBACK, PRIMARY])
     llm._cooling.clear()
 
+    seen = install(lambda b: error(503, "This model is currently experiencing high demand.")
+                   if b["model"] == PRIMARY else completion(b["model"], "ok"))
+    llm.complete([{"role": "user", "content": "hi"}])
+    seen.clear()
+    _, who = llm.complete([{"role": "user", "content": "hi"}])
+    check("a 503 'high demand' names no wait, but the next turn still skips to the fallback",
+          who == FALLBACK and [b["model"] for b in seen] == [FALLBACK], str([b["model"] for b in seen]))
+    check("  briefly", 0 < llm._cooling[PRIMARY] - time.monotonic() <= llm.OVERLOADED_COOLDOWN_SECONDS)
+    seen = install(lambda b: error(500) if b["model"] == PRIMARY else completion(b["model"], "ok"))
+    llm.complete([{"role": "user", "content": "hi"}])
+    check("  a plain 500 doesn't bench a model: it may be this request, not the model",
+          PRIMARY not in llm._cooling)
+    llm._cooling.clear()
+
     seen = install(slow_primary(0.5))
     text, who = llm.complete([{"role": "user", "content": "hi"}])
     check("LLM_HEDGE_SECONDS=0: one at a time — the slow primary is waited for", who == PRIMARY and len(seen) == 1)

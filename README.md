@@ -65,6 +65,12 @@ Two consequences are the point:
    that silently refuses a legitimate request is worse than one that
    escalates it.
 
+Requests are projected together, not one at a time. Ravi's one day of medical
+leave keeps him above 75%; a second, separate day is flagged, because
+the first is still on file. Leave over days already covered by a submitted or
+approved request is refused (`overlaps`), so a message re-sent while the reply
+was slow files nothing twice.
+
 None of those numbers is written anywhere in the code. They fall out of the
 formula against the seeded attendance.
 
@@ -330,7 +336,7 @@ Refusals stay distinguishable, in chat and over HTTP:
 ## Testing and evaluation
 
 ```bash
-bash scripts/run_tests.sh       # 779 checks, no model, no network, ~2 min
+bash scripts/run_tests.sh       # 816 checks, no model, no network, ~2 min
 ```
 
 | Suite | Checks | Exercises |
@@ -341,12 +347,13 @@ bash scripts/run_tests.sh       # 779 checks, no model, no network, ~2 min
 | `test_documents.py` | 167 | extraction from real PDFs/DOCX, both syllabus layouts, every calendar date shape (week grids too), adding and removing dates in review, the upload API by role, filtered retrieval, holidays in force |
 | `test_attendance.py` | 60 | the projection: OD raises, medical lowers, threshold crossing, held=0; which leave is granted; leave already taken is not counted twice |
 | `test_certificates.py` | 27 | who may attach and open a medical certificate, over HTTP; the warden's redacted copy; approval refused without one |
+| `test_workflows.py` | 34 | multi-turn journeys across accounts (stacked leave, a re-sent request, a staff member naming a student with two pending), then 30 seeded random walks of every mutation against a reference model of the rules: after each step the store must match the model and a refused step must leave no trace |
 | `test_mess.py` | 64 | mess names, cleaning, CSV import/export, only the warden writes (over HTTP, refusals change nothing), the sample label, chat answers by day and meal |
 | `test_tracker.py` | 41 | the GitHub mirror against a fake API: labels, close reasons, no names, GitHub down then back, no duplicates, leave without its reason |
 | `test_dates.py` | 36 | calendar arithmetic against a pinned clock, the holiday calendar, blank classifier fields |
 | `test_calendar.py` | 29 | `calendar_question` spans and answers per year of study; `document_question` filters and absence |
 | `test_amend.py` | 25 | amend and cancel, ownership, "the most recent open one" |
-| `test_llm.py` | 33 | the provider chain against a fake transport: 429 / 5xx / non-completion fall back, schema retry, several fallbacks, hedging a slow model, a rate-limited model tried last |
+| `test_llm.py` | 36 | the provider chain against a fake transport: 429 / 5xx / non-completion fall back, schema retry, several fallbacks, hedging a slow model, a rate-limited or overloaded (503) model tried last |
 | `test_rag.py` | 16 | chunking, stale-index detection (content and format), the planted-injection guard |
 
 Every suite runs against a throwaway copy of the seed data and blanks the

@@ -108,6 +108,7 @@ def main() -> int:
     check("with the certificate attached, the advisor can approve it", r.status_code == 200, r.text)
     check("a decided request's certificate can't be swapped (409)", attach(ravi, medical).status_code == 409)
     check("  but stays readable", ravi.get(f"/api/records/{medical}/certificate").status_code == 200)
+    st["entities"] = {**st["entities"], "start_date": "2026-11-09", "end_date": "2026-11-09"}
     reject_me = handlers.handle_request_od_leave(st)["debug"]["record_id"]
     r = advisor.post(f"/api/records/{reject_me}/action", json={"action": "reject"})
     check("rejecting medical leave doesn't need a certificate", r.status_code == 200, r.text)

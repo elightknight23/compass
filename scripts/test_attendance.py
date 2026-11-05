@@ -138,6 +138,7 @@ def main() -> int:
     check("  and the submission was audited",
           [e["verb"] for e in backend.list_events(d["record_id"])["data"]] == ["submit"])
 
+    backend = sandbox("json")  # the same days again, for a student with nothing on file
     out = apply(leave_kind="od", start_date="2026-11-02", end_date="2026-11-04")
     check("OD on the same dates is not flagged",
           out["debug"].get("needs_exception") is False, out["reply"])
@@ -170,6 +171,7 @@ def main() -> int:
           out["debug"].get("outcome") == "leave_not_granted" and "isn't granted" in out["reply"]
           and "Leave That Is Not Granted" in out["reply"], out["reply"])
     check("  and nothing was created", len(backend.list_records_for_user("U001")["data"]) == before)
+    backend = sandbox("json")
     out = apply(leave_kind="family_emergency", start_date="2026-11-02", end_date="2026-11-02")
     check("family-emergency leave is created, and not counted as present",
           out["debug"].get("outcome") == "created" and out["debug"]["attendance"]["condoned"] is False

@@ -215,11 +215,18 @@ class _Unusable(Exception):
 # still answers if everything else is down — and no turn pays its 429.
 _cooling: dict[str, float] = {}
 MAX_COOLDOWN_SECONDS = 60.0
+# A 503 "high demand" names no wait, but it comes in spells: on a busy day
+# the free-tier primary answers 503 to nearly every call, and without this
+# every turn would pay that failure before reaching a model that answers.
+OVERLOADED_COOLDOWN_SECONDS = 20.0
 
 
 def _note_rate_limit(name: str, e: Exception) -> None:
     import openai
 
+    if isinstance(e, openai.InternalServerError) and getattr(e, "status_code", None) == 503:
+        _cooling[name] = time.monotonic() + OVERLOADED_COOLDOWN_SECONDS
+        return
     if not isinstance(e, openai.RateLimitError):
         return
     m = re.search(r"retry in ([\d.]+)s", str(e))
