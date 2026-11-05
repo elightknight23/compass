@@ -23,12 +23,17 @@ function inline(text: string): ReactNode[] {
   return out;
 }
 
+// Models write bullets as "* " (often "*   ") as readily as "- ". Read as
+// emphasis, that leading star pairs with the next one and italicises half
+// a line, leaving stray stars behind; so every bullet becomes "- " first.
+const BULLET = /^\s*[*•]\s+|^\s+-\s+/;
+
 export function Rich({ text }: { text: string }) {
   const paras = (text || "").split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
   return (
     <>
       {paras.map((para, i) => {
-        const lines = para.split("\n");
+        const lines = para.split("\n").map((l) => l.replace(BULLET, "- "));
         const items = lines.filter((l) => l.startsWith("- "));
         if (items.length && items.length === lines.length - (lines[0].startsWith("- ") ? 0 : 1)) {
           const lead = lines[0].startsWith("- ") ? null : lines[0];
