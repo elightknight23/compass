@@ -64,12 +64,6 @@ class Projection:
     def already_below(self) -> bool:
         return self.current_pct is not None and self.current_pct < self.threshold
 
-    @property
-    def delta_pct(self) -> float | None:
-        if self.current_pct is None or self.projected_pct is None:
-            return None
-        return self.projected_pct - self.current_pct
-
     def as_dict(self) -> dict:
         """JSON-safe snapshot to store on the record and show in the trace."""
         return {
@@ -115,11 +109,12 @@ def project(
     days = max(0, int(working_days))
     other = max(0, int(other_absent_days))
 
-    added = days * max(0, ppd)
+    per_day = max(0, ppd)
+    added = days * per_day
     present = added if condoned else 0
 
     current = attended / held if held else None
-    total = held + other * max(0, ppd) + added
+    total = held + (days + other) * per_day
     projected = (attended + present) / total if total else None
 
     return Projection(

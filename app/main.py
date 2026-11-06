@@ -336,17 +336,34 @@ def my_attendance(user: dict = Depends(require_user)):
     }
 
 
-CERTIFICATE_OUTCOME_STATUS = {
+# How each refusal reads over HTTP, for records, certificates, documents and
+# the mess menu alike. "You may not" (403), "no such record" (404) and "that
+# record is already decided" (409) are three different answers, here as in
+# chat. An outcome not listed is a bad request (400) unless a caller says otherwise.
+OUTCOME_STATUS = {
     "not_signed_in": 401,
     "not_authorized": 403,
     "not_found": 404,
     "invalid": 400,
     "empty": 400,
+    "not_a_calendar": 400,
+    "unknown_action": 400,
+    "wrong_action_for_type": 400,  # approving a complaint is a bad request
     "unsupported_type": 415,
     "too_large": 413,
     "terminal_state": 409,
+    "needs_exception_ack": 409,
+    "needs_certificate": 409,
+    "duplicate": 409,
+    "still_processing": 409,
     "unavailable": 502,
 }
+
+
+def _refusal(res: dict, default: int = 400, **extra) -> JSONResponse:
+    outcome = res.get("outcome")
+    return JSONResponse(status_code=OUTCOME_STATUS.get(outcome, default),
+                        content={"detail": res["error"], "outcome": outcome, **extra})
 
 
 @app.post("/api/records/{record_id}/certificate")
@@ -357,8 +374,7 @@ async def attach_certificate(record_id: str, file: UploadFile = File(...),
     data = await file.read(config.MAX_CERTIFICATE_MB * 1024 * 1024 + 1)
     res = certificates.attach(user, record_id, file.filename or "certificate", data)
     if not res["success"]:
-        return JSONResponse(status_code=CERTIFICATE_OUTCOME_STATUS.get(res["outcome"], 400),
-                            content={"detail": res["error"], "outcome": res["outcome"]})
+        return _refusal(res)
     return {"outcome": res["outcome"], "record": res["data"]}
 
 
@@ -368,7 +384,7 @@ def certificate_file(record_id: str, user: dict = Depends(require_user)):
     member's: a warden reads records, not medical certificates."""
     res = certificates.open_file(user, record_id)
     if not res["success"]:
-        raise HTTPException(status_code=CERTIFICATE_OUTCOME_STATUS.get(res["outcome"], 400),
+        raise HTTPException(status_code=OUTCOME_STATUS.get(res["outcome"], 400),
                             detail=res["error"])
     f = res["data"]
     return FileResponse(f["path"], media_type=f["content_type"], filename=f["filename"],
@@ -410,20 +426,6 @@ def queue(user: dict = Depends(require_staff)):
     }
 
 
-# How each refusal reads over HTTP. "You may not" (403), "no such record"
-# (404) and "that record is already decided" (409) are three different
-# answers, here as in chat.
-OUTCOME_STATUS = {
-    "not_found": 404,
-    "not_authorized": 403,
-    "unknown_action": 400,
-    "wrong_action_for_type": 400,  # approving a complaint is a bad request
-    "terminal_state": 409,
-    "needs_exception_ack": 409,
-    "needs_certificate": 409,
-}
-
-
 @app.post("/api/records/{record_id}/action")
 def record_action(record_id: str, req: ActionRequest, user: dict = Depends(require_staff)):
     """Approve / reject / resolve / cancel one record from the console.
@@ -437,19 +439,13 @@ def record_action(record_id: str, req: ActionRequest, user: dict = Depends(requi
     )
 
     if not res["success"]:
-        status = OUTCOME_STATUS.get(res.get("outcome"), 502)
         print(
             f"[compass] console user={user['id']} {req.action} {record_id} "
             f"-> {res.get('outcome')} ({res['error']})"
         )
-        return JSONResponse(
-            status_code=status,
-            content={
-                "detail": res["error"],
-                "outcome": res.get("outcome"),
-                **({"projection": res["projection"]} if res.get("projection") else {}),
-            },
-        )
+        # A read or write that failed (no listed outcome) is the store's fault: 502.
+        return _refusal(res, default=502,
+                        **({"projection": res["projection"]} if res.get("projection") else {}))
 
     record = res["data"]
     print(
@@ -468,31 +464,11 @@ def record_action(record_id: str, req: ActionRequest, user: dict = Depends(requi
 # ---------------------------------------------------------------------------
 # Documents — the College's calendar, syllabi and regulations
 # ---------------------------------------------------------------------------
-# library.py re-checks the caller on every mutation (I1); these only shape
-# HTTP. The same outcome vocabulary as records: "you may not" is 403, "no
-# such document" 404, "already uploaded" / "still processing" 409.
-DOCUMENT_OUTCOME_STATUS = {
-    "not_authorized": 403,
-    "not_found": 404,
-    "invalid": 400,
-    "empty": 400,
-    "not_a_calendar": 400,
-    "unsupported_type": 415,
-    "too_large": 413,
-    "duplicate": 409,
-    "still_processing": 409,
-    "unavailable": 502,
-}
-
-
+# library.py re-checks the caller on every mutation (I1); these only shape HTTP.
 def _library(res: dict, ok_status: int = 200):
     if res["success"]:
         return JSONResponse(status_code=ok_status, content={"outcome": res["outcome"], "data": res["data"]})
-    return JSONResponse(
-        status_code=DOCUMENT_OUTCOME_STATUS.get(res["outcome"], 400),
-        content={"detail": res["error"], "outcome": res["outcome"],
-                 **({"document": res["document"]} if res.get("document") else {})},
-    )
+    return _refusal(res, **({"document": res["document"]} if res.get("document") else {}))
 
 
 @app.post("/api/documents")
@@ -592,24 +568,9 @@ def calendar(start: str | None = None, end: str | None = None, user: dict = Depe
 # ---------------------------------------------------------------------------
 # The mess menu — everyone reads; the warden writes (app/mess.py checks)
 # ---------------------------------------------------------------------------
-MESS_OUTCOME_STATUS = {
-    "not_authorized": 403,
-    "not_found": 404,
-    "invalid": 400,
-    "too_large": 413,
-    "unsupported_type": 415,
-    "unavailable": 502,
-}
-
-
 class MenuRequest(BaseModel):
     week: dict
     timings: dict | None = None
-
-
-def _mess(res: dict) -> JSONResponse:
-    return JSONResponse(status_code=MESS_OUTCOME_STATUS.get(res.get("outcome"), 400),
-                        content={"detail": res["error"], "outcome": res.get("outcome")})
 
 
 @app.get("/api/mess")
@@ -618,7 +579,7 @@ def mess_menus(user: dict = Depends(require_user)):
     `official: false` on a menu means it is the sample."""
     res = mess.menus()
     if not res["success"]:
-        return _mess({**res, "outcome": "unavailable"})
+        return _refusal({**res, "outcome": "unavailable"})
     return {"messes": list(mess.MESSES), "meals": list(mess.MEALS), "days": list(mess.DAYS),
             "mine": mess.normalize_mess(user.get("mess")), "may_edit": auth.may_manage_menu(user),
             "menus": res["data"]}
@@ -628,7 +589,7 @@ def mess_menus(user: dict = Depends(require_user)):
 def save_mess_menu(name: str, req: MenuRequest, user: dict = Depends(require_user)):
     res = mess.save(user, name, req.week, req.timings)
     if not res["success"]:
-        return _mess(res)
+        return _refusal(res)
     return {"outcome": res["outcome"], "menu": res["data"]}
 
 
@@ -637,7 +598,7 @@ async def import_mess_menu(name: str, file: UploadFile = File(...), user: dict =
     """A CSV read into a menu for the warden to check. Nothing is saved."""
     res = mess.import_csv(user, name, await file.read(200_001))
     if not res["success"]:
-        return _mess(res)
+        return _refusal(res)
     return {"outcome": res["outcome"], "week": res["data"]["week"]}
 
 

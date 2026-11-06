@@ -3,7 +3,7 @@
 The classifier is the agent's nervous system, so it does not get to
 improvise. Every routing decision comes back through a Pydantic schema
 via structured outputs, which means the API — not a prompt suggestion —
-guarantees `intent` is one of the nine the graph has an edge for. A
+guarantees `intent` is one of the eleven the graph has an edge for. A
 hallucinated intent is structurally impossible rather than merely
 unlikely, and the conditional edge can never KeyError.
 
@@ -26,18 +26,16 @@ from a relative one, and to read "this Friday" against the right week.
 from __future__ import annotations
 
 import time
+from functools import lru_cache
 from typing import Literal
 
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field, model_validator
 
 from . import clock, dates, handlers, llm
-from .dates import DateSpec
+from .dates import DateSpec, Month, Weekday
 from .state import AgentState, Intent
 
-WeekdayName = Literal[
-    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"
-]
 
 HISTORY_TURNS = 6  # sliding window fed to the classifier
 CONFIDENCE_FLOOR = 0.45  # below this, ask instead of guessing
@@ -47,11 +45,6 @@ CONFIDENCE_FLOOR = 0.45  # below this, ask instead of guessing
 # The schema the model must answer in
 # ---------------------------------------------------------------------------
 _NULLISH = {"", "null", "none", "n/a"}
-
-MonthName = Literal[
-    "january", "february", "march", "april", "may", "june", "july", "august",
-    "september", "october", "november", "december",
-]
 
 
 class Classification(BaseModel):
@@ -110,7 +103,7 @@ class Classification(BaseModel):
             "days: today=0, tomorrow=1, 'in three days'=3. Null otherwise."
         ),
     )
-    anchor_weekday: WeekdayName | None = Field(
+    anchor_weekday: Weekday | None = Field(
         default=None, description="The weekday the leave STARTS on, if one is named"
     )
     week_offset: int | None = Field(
@@ -120,7 +113,7 @@ class Classification(BaseModel):
             "week: 0=this week, 1='next Monday', 4='four weeks from now'."
         ),
     )
-    end_weekday: WeekdayName | None = Field(
+    end_weekday: Weekday | None = Field(
         default=None, description="The weekday the leave ENDS on, if one is named"
     )
     duration_weekdays: int | None = Field(
@@ -248,7 +241,7 @@ class Classification(BaseModel):
             "day), any (everything, or a single-day 'is there college on X?')."
         ),
     )
-    month: MonthName | None = Field(
+    month: Month | None = Field(
         default=None,
         description="A month the user named without a day: 'holidays in November' -> november.",
     )
@@ -424,11 +417,11 @@ def _system_prompt(user: dict | None) -> str:
 def classify(state: AgentState) -> dict:
     """Turn one message into an intent plus entities."""
     started = time.perf_counter()
-    messages: list[dict] = [{"role": "system", "content": _system_prompt(state["user"])}]
-    for turn in state["history"][-HISTORY_TURNS:]:
-        role = "assistant" if turn.get("role") in ("bot", "assistant") else "user"
-        messages.append({"role": role, "content": turn.get("content", "")})
-    messages.append({"role": "user", "content": state["current_message"]})
+    messages = [
+        {"role": "system", "content": _system_prompt(state["user"])},
+        *handlers.history_messages(state, HISTORY_TURNS),
+        {"role": "user", "content": state["current_message"]},
+    ]
 
     try:
         result, provider = llm.parse(messages, Classification, temperature=0)
@@ -502,23 +495,14 @@ def classify(state: AgentState) -> dict:
 
     # Both halves go in the trace: what the model heard, and what the
     # code made of it. The demo shows the seam.
-    date_trace = (
-        {
-            "heard": {
-                k: v
-                for k, v in vars(spec).items()
-                if v is not None
-            },
-            "resolved": (
-                f"{resolved[0].isoformat()} ({resolved[0]:%a}) .. "
-                f"{resolved[1].isoformat()} ({resolved[1]:%a})"
-                if resolved
-                else "no dates in message"
-            ),
-        }
-        if not spec.is_empty()
-        else None
-    )
+    date_trace = None if spec.is_empty() else {
+        "heard": {k: v for k, v in vars(spec).items() if v is not None},
+        "resolved": (
+            f"{resolved[0].isoformat()} ({resolved[0]:%a}) .. "
+            f"{resolved[1].isoformat()} ({resolved[1]:%a})"
+            if resolved else "no dates in message"
+        ),
+    }
     confidence = max(0.0, min(1.0, result.confidence))
     intent = result.intent.value
 
@@ -594,12 +578,7 @@ def build_graph():
     return g.compile()
 
 
-_GRAPH = None
-
-
+@lru_cache(maxsize=1)
 def graph():
     """Compiled once, reused per request."""
-    global _GRAPH
-    if _GRAPH is None:
-        _GRAPH = build_graph()
-    return _GRAPH
+    return build_graph()

@@ -242,8 +242,7 @@ class Model:
             return "overlaps", None
 
         def ahead(s: date, e: date) -> int:
-            s = max(s, today)
-            return dates.working_days(s, e, hols) if e >= s else 0
+            return dates.working_days(max(s, today), e, hols)
 
         other = sum(ahead(date.fromisoformat(r["start"]), date.fromisoformat(r["end"]))
                     for r in mine if r["kind"] != "od")

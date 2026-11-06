@@ -23,7 +23,9 @@ Three rules hold across every handler in this file:
 from __future__ import annotations
 
 import re
+from calendar import monthrange
 from datetime import date, timedelta
+from typing import get_args
 
 from . import attendance, auth, backends, clock, config, dates, llm, mess, rag, users
 from .backends import COMPLAINT, OD_REQUEST
@@ -106,14 +108,15 @@ ACTION_STATUS = {
     "cancel": "cancelled",
 }
 
-# Which record types each verb makes sense on. Approving a complaint is not
+# Which record types each verb makes sense on — and so which records a
+# staff verb means when only a name was given. Approving a complaint is not
 # a smaller mistake than approving nothing — it writes a status that means
 # something else, and the record looks actioned afterwards.
 ACTION_APPLIES_TO = {
-    "approve": {OD_REQUEST},
-    "reject": {OD_REQUEST},
-    "resolve": {COMPLAINT},
-    "cancel": {OD_REQUEST, COMPLAINT},
+    "approve": (OD_REQUEST,),
+    "reject": (OD_REQUEST,),
+    "resolve": (COMPLAINT,),
+    "cancel": (OD_REQUEST, COMPLAINT),
 }
 
 # What an owner may change about their own record. Deliberately excludes
@@ -210,15 +213,7 @@ def handle_document_question(state: AgentState) -> dict:
         provider=result["provider"],
         index=status,
         filter=described,
-        retrieved=[
-            {
-                "source": c["metadata"]["source"],
-                "section": c["metadata"].get("header_path"),
-                "doc_id": c["metadata"].get("doc_id"),
-                "distance": round(c["distance"], 4),
-            }
-            for c in result["chunks"]
-        ],
+        retrieved=result["sources"],
         outcome="answered",
     )
 
@@ -232,9 +227,7 @@ CALENDAR_KINDS = {
     "semester": {"semester_start", "semester_end"},
 }
 KIND_WORDS = {"holiday": "holidays", "exam": "exams", "semester": "semester dates"}
-MONTH_INDEX = {m: i for i, m in enumerate(
-    ["january", "february", "march", "april", "may", "june", "july", "august",
-     "september", "october", "november", "december"], start=1)}
+MONTH_INDEX = {m: i for i, m in enumerate(get_args(dates.Month), start=1)}
 UPCOMING_DAYS = 60
 MAX_LISTED = 10
 
@@ -246,9 +239,6 @@ def calendar_range(entities: dict, today: date) -> tuple[date, date | None, str]
     date range, a month (its next occurrence), a bare week offset, "the
     next one", or by default the coming weeks.
     """
-    from calendar import monthrange
-    from datetime import timedelta
-
     if entities.get("start_date"):
         lo = date.fromisoformat(entities["start_date"])
         hi = date.fromisoformat(entities.get("end_date") or entities["start_date"])
@@ -265,9 +255,18 @@ def calendar_range(entities: dict, today: date) -> tuple[date, date | None, str]
     return today, today + timedelta(days=UPCOMING_DAYS), "upcoming"
 
 
-def _event_span(ev: dict) -> tuple[date, date]:
-    start = date.fromisoformat(ev["start_date"])
-    return start, date.fromisoformat(ev.get("end_date") or ev["start_date"])
+def _dates_of(item: dict) -> tuple[date, date]:
+    """(start, end) of a calendar event or a leave request."""
+    start = date.fromisoformat(item["start_date"])
+    return start, date.fromisoformat(item.get("end_date") or item["start_date"])
+
+
+def _overlaps(item: dict, lo: date, hi: date | None) -> bool:
+    """Whether an event or leave request touches [lo, hi]; None is open-ended."""
+    if not item.get("start_date"):
+        return False
+    s, t = _dates_of(item)
+    return t >= lo and (hi is None or s <= hi)
 
 
 def handle_calendar_question(state: AgentState) -> dict:
@@ -289,13 +288,7 @@ def handle_calendar_question(state: AgentState) -> dict:
     today = clock.today()
     lo, hi, mode = calendar_range(e, today)
 
-    def overlaps(ev: dict) -> bool:
-        if not ev.get("start_date"):
-            return False
-        s, t = _event_span(ev)
-        return t >= lo and (hi is None or s <= hi)
-
-    wanted = [ev for ev in events if overlaps(ev) and (kind is None or ev["kind"] in CALENDAR_KINDS[kind])]
+    wanted = [ev for ev in events if _overlaps(ev, lo, hi) and (kind is None or ev["kind"] in CALENDAR_KINDS[kind])]
     wanted.sort(key=lambda ev: (ev["start_date"], ev.get("title") or ""))
 
     titles = _document_titles({ev.get("document_id") for ev in wanted} - {None})
@@ -328,12 +321,12 @@ def handle_calendar_question(state: AgentState) -> dict:
 
     noun = KIND_WORDS.get(kind, "events")
     if mode == "next":
-        upcoming = [ev for ev in wanted if _event_span(ev)[1] >= today]
+        upcoming = [ev for ev in wanted if _dates_of(ev)[1] >= today]
         if not upcoming:
             return _out(f"I don't see any more {noun} in the calendar after {_day(today)}.{footer}",
                         outcome="none_found", **trace)
         ev = upcoming[0]
-        s, t = _event_span(ev)
+        s, t = _dates_of(ev)
         when = "Today" if s <= today <= t else _span(s, t)
         return _out(f"The next one: **{when}** — {ev['title']}.{footer}", outcome="answered", **trace)
 
@@ -345,7 +338,7 @@ def handle_calendar_question(state: AgentState) -> dict:
     }[mode]
     if not wanted:
         return _out(f"No {noun} {where} in the calendar.{footer}", outcome="none_found", **trace)
-    lines = [f"- **{_span(*_event_span(ev))}** — {ev['title']}" for ev in wanted[:MAX_LISTED]]
+    lines = [f"- **{_span(*_dates_of(ev))}** — {ev['title']}" for ev in wanted[:MAX_LISTED]]
     more = f"\n\n…and {len(wanted) - MAX_LISTED} more." if len(wanted) > MAX_LISTED else ""
     head = f"{noun[:1].upper()}{noun[1:]} {where}:"
     return _out(f"{head}\n\n" + "\n".join(lines) + more + footer, outcome="answered", **trace)
@@ -370,9 +363,6 @@ def _calendar_footer(source: str, titles: dict[str, str]) -> str:
     return "\n\n*From the College's academic calendar.*"
 
 
-# ---------------------------------------------------------------------------
-# file_complaint
-# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # mess_menu — a lookup by mess, weekday and meal, all resolved in Python
 # ---------------------------------------------------------------------------
@@ -443,6 +433,9 @@ def handle_mess_menu(state: AgentState) -> dict:
     return _out(body, outcome="answered", **trace)
 
 
+# ---------------------------------------------------------------------------
+# file_complaint
+# ---------------------------------------------------------------------------
 def handle_file_complaint(state: AgentState) -> dict:
     user = state["user"]
     if not user:
@@ -959,20 +952,11 @@ def _projection_sentence(proj: attendance.Projection, kind: str,
 LIVE_LEAVE = {"submitted", "approved"}  # leave that will still be taken
 
 
-def _leave_on_file(user_id: str) -> dict:
-    """The student's submitted and approved leave: a backend envelope."""
-    res = backends.get_backend().list_records_for_user(user_id, (OD_REQUEST,))
-    if res["success"]:
-        res = backends.ok([r for r in res["data"] or [] if r.get("status") in LIVE_LEAVE])
-    return res
-
-
-def _days_still_ahead(record: dict, today: date, hols) -> int:
-    """Working days of one leave request from today on: the part not yet in
-    the attendance figures."""
-    start = max(date.fromisoformat(record["start_date"]), today)
-    end = date.fromisoformat(record["end_date"])
-    return dates.working_days(start, end, hols) if end >= start else 0
+def _days_ahead(start: date, end: date, today: date, hols) -> int:
+    """Working days of [start, end] from today on. Days already gone are in
+    the attendance figures as absences (recorded up to yesterday), so
+    counting them again would count every missed period twice."""
+    return dates.working_days(max(start, today), end, hols)
 
 
 def handle_request_od_leave(state: AgentState) -> dict:
@@ -1075,32 +1059,29 @@ def handle_request_od_leave(state: AgentState) -> dict:
     # What the student already has on file. A request over the same days is
     # not a second request (often it is the first one, re-sent while the
     # reply was slow), and one-day requests filed separately must add up.
-    on_file = _leave_on_file(user["id"])
+    backend = backends.get_backend()
+    on_file = backend.list_records_for_user(user["id"], (OD_REQUEST,))
     if not on_file["success"]:
         return _out(
             "I couldn't reach the records system to check your other leave, so "
             "nothing was submitted — please try again shortly.",
             error=on_file["error"], outcome="read_failed", **trace,
         )
-    clash = next((r for r in sorted(on_file["data"], key=_recency_key)
-                  if r["start_date"] <= end.isoformat() and start.isoformat() <= r["end_date"]),
-                 None)
+    live = [r for r in on_file["data"] or [] if r["status"] in LIVE_LEAVE]
+    clash = min((r for r in live if _overlaps(r, start, end)), key=_recency_key, default=None)
     if clash:
         return _out(
             f"You already have **{clash['id']}** — "
-            f"{LEAVE_NAMES.get(clash['leave_kind'], 'leave')}, "
-            f"{_span(date.fromisoformat(clash['start_date']), date.fromisoformat(clash['end_date']))}, "
+            f"{LEAVE_NAMES.get(clash['leave_kind'], 'leave')}, {_span(*_dates_of(clash))}, "
             f"**{clash['status']}** — covering those days, so I haven't filed another. "
             "To change it, withdraw that one and apply again.",
             outcome="overlaps", authz="allowed", overlaps=clash["id"], **trace,
         )
-    others = {r["id"]: _days_still_ahead(r, today, hols) for r in on_file["data"]
-              if not attendance.is_condoned(r.get("leave_kind"))}
-    others = {rid: n for rid, n in others.items() if n}
+    others = {r["id"]: n for r in live if not attendance.is_condoned(r["leave_kind"])
+              and (n := _days_ahead(*_dates_of(r), today, hols))}
     if others:
         trace["other_leave_counted"] = others
 
-    backend = backends.get_backend()
     att = backend.get_attendance(user["id"])
     if not att["success"]:
         return _out(
@@ -1110,15 +1091,7 @@ def handle_request_od_leave(state: AgentState) -> dict:
             error=att["error"], outcome="read_failed", **trace,
         )
 
-    # Days already gone are already in the attendance figures, as absences
-    # (attendance is recorded up to yesterday). Adding them again would
-    # count every missed period twice; only the days still to come move it.
-    if start >= today:
-        ahead = working
-    elif end < today:
-        ahead = 0
-    else:
-        ahead = dates.working_days(today, end, hols)
+    ahead = _days_ahead(start, end, today, hols)
     if ahead != working:
         trace["already_counted_days"] = working - ahead
 
@@ -1361,15 +1334,6 @@ def apply_staff_action(
     )
 
 
-# Which record type a staff verb means when only a name was given.
-ACTION_LOOKS_AT = {
-    "approve": (OD_REQUEST,),
-    "reject": (OD_REQUEST,),
-    "resolve": (COMPLAINT,),
-    "cancel": (OD_REQUEST, COMPLAINT),
-}
-
-
 def _find_target_record(
     name: str | None, action: str, leave_kind: str | None = None
 ) -> tuple[str | None, str | None]:
@@ -1396,7 +1360,7 @@ def _find_target_record(
         return None, f"I found more than one match for {name}: {names}. Which one?"
 
     target = matches[0]
-    types = ACTION_LOOKS_AT.get(action, (OD_REQUEST, COMPLAINT))
+    types = ACTION_APPLIES_TO.get(action, (OD_REQUEST, COMPLAINT))
     res = backends.get_backend().list_records_for_user(target["id"], types)
     if not res["success"]:
         return None, f"I couldn't look up {target['name']}'s records just now."
@@ -1438,10 +1402,11 @@ def handle_staff_action(state: AgentState) -> dict:
     # which is intentional: this one exists to produce a helpful reply, that
     # one to make the rule unskippable.
     if not auth.is_staff(user):
+        advisor = _who_can(OD_REQUEST)
         return _out(
             "I can't do that — approving, rejecting and resolving requests is "
             "for staff, and yours is a student account. "
-            f"{_who_can(OD_REQUEST)[:1].upper() + _who_can(OD_REQUEST)[1:]} "
+            f"{advisor[:1].upper() + advisor[1:]} "
             f"decides leave; {_who_can(COMPLAINT)} handles complaints.",
             authz="denied",
             reason=f"role={user['role']} holds no capability",
@@ -1468,9 +1433,9 @@ def handle_staff_action(state: AgentState) -> dict:
     # reads it and answers in I3 order, so "approve CMP-1001" from the warden
     # is "a complaint can't be approved — try resolve", not a sentence about
     # leave she never mentioned.
-    needed = ACTION_APPLIES_TO.get(action, set())
+    needed = ACTION_APPLIES_TO.get(action, ())
     if not record_id and needed and not any(auth.may_action(user, t) for t in needed):
-        kind = next(iter(needed))
+        kind = needed[0]
         return _out(
             f"I can't {action} that — {TYPE_PLURAL.get(kind, 'those records')} "
             f"are decided by {_who_can(kind)}, and your account is "
@@ -1550,7 +1515,7 @@ def handle_staff_action(state: AgentState) -> dict:
 # ---------------------------------------------------------------------------
 # clarify / out_of_scope — the messy cases
 # ---------------------------------------------------------------------------
-def _history_messages(state: AgentState, turns: int) -> list[dict]:
+def history_messages(state: AgentState, turns: int) -> list[dict]:
     return [
         {
             "role": "assistant" if t.get("role") in ("bot", "assistant") else "user",
@@ -1589,7 +1554,7 @@ def handle_clarify(state: AgentState) -> dict:
                         "numbers."
                     ),
                 },
-                *_history_messages(state, 4),
+                *history_messages(state, 4),
                 {"role": "user", "content": state["current_message"]},
             ],
             temperature=0.3,

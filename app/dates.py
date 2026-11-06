@@ -39,7 +39,7 @@ import sys
 from dataclasses import dataclass
 from datetime import date, timedelta
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, get_args
 
 from . import clock, config
 
@@ -47,15 +47,11 @@ Weekday = Literal[
     "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"
 ]
 
-_INDEX: dict[str, int] = {
-    "monday": 0,
-    "tuesday": 1,
-    "wednesday": 2,
-    "thursday": 3,
-    "friday": 4,
-    "saturday": 5,
-    "sunday": 6,
-}
+_INDEX: dict[str, int] = {d: i for i, d in enumerate(get_args(Weekday))}
+Month = Literal[
+    "january", "february", "march", "april", "may", "june", "july", "august",
+    "september", "october", "november", "december",
+]
 
 
 @dataclass(frozen=True)
@@ -136,17 +132,25 @@ def _holiday_table() -> tuple[str, tuple[tuple[date, str, frozenset[int] | None]
     if confirmed:
         return "calendar", tuple(rows)
 
+    seed = _seed_rows()
+    if seed is None:
+        return "none", ()
+    return "seed", tuple((d, name, None) for d, name in seed)
+
+
+def _seed_rows() -> list[tuple[date, str]] | None:
+    """data/holidays.json as (day, name) rows; None if it can't be read."""
     try:
         raw = json.loads((config.DATA_DIR / "holidays.json").read_text())
     except (OSError, ValueError):
-        return "none", ()
-    seed = []
+        return None
+    rows = []
     for entry in raw:
         try:
-            seed.append((date.fromisoformat(entry["date"]), entry.get("name") or "Holiday", None))
+            rows.append((date.fromisoformat(entry["date"]), entry.get("name") or "Holiday"))
         except (KeyError, TypeError, ValueError):
             continue  # one malformed row should not discard the calendar
-    return "seed", tuple(seed)
+    return rows
 
 
 def _years(value) -> frozenset[int] | None:
@@ -167,18 +171,10 @@ def event_applies(event: dict, year: int | None) -> bool:
 
 def seed_holidays() -> list[dict]:
     """The placeholder file's holidays, shaped like calendar events."""
-    try:
-        raw = json.loads((config.DATA_DIR / "holidays.json").read_text())
-    except (OSError, ValueError):
-        return []
-    out = []
-    for entry in raw:
-        if _parse(entry.get("date")) is None:
-            continue
-        out.append({"id": None, "document_id": None, "start_date": entry["date"],
-                    "end_date": entry["date"], "title": entry.get("name") or "Holiday",
-                    "kind": "holiday", "years": "all", "include": True, "confirmed": True})
-    return out
+    return [{"id": None, "document_id": None, "start_date": d.isoformat(),
+             "end_date": d.isoformat(), "title": name,
+             "kind": "holiday", "years": "all", "include": True, "confirmed": True}
+            for d, name in _seed_rows() or []]
 
 
 def _applies(years: frozenset[int] | None, year: int | None) -> bool:

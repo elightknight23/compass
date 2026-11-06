@@ -57,9 +57,4 @@ def find_by_name(text: str) -> list[dict]:
     hits = [u for u in all_users() if needle == u["name"].lower()]
     if hits:
         return hits
-    return [
-        u
-        for u in all_users()
-        if needle in u["name"].lower()
-        or any(part.startswith(needle) for part in u["name"].lower().split())
-    ]
+    return [u for u in all_users() if needle in u["name"].lower()]

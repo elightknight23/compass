@@ -99,6 +99,12 @@ class JsonBackend:
         return [blank_record(**r) for r in self._load(self.records_path)]
 
     @staticmethod
+    def _find(rows: list[dict], row_id: str | None) -> dict | None:
+        """The row with this id, compared case-insensitively."""
+        wanted = (row_id or "").strip().upper()
+        return next((r for r in rows if r["id"].upper() == wanted), None)
+
+    @staticmethod
     def _next_id(records: list[dict], prefix: str, start: int) -> str:
         used = [
             int(r["id"][len(prefix):])
@@ -176,9 +182,7 @@ class JsonBackend:
             records = self._records()
         except (OSError, ValueError) as e:
             return fail(f"Could not read the records file: {e}", UNAVAILABLE)
-        wanted = (record_id or "").strip().upper()
-        match = next((r for r in records if r["id"].upper() == wanted), None)
-        return ok(match, backend=self.name)  # ok(None) == no such record
+        return ok(self._find(records, record_id), backend=self.name)  # ok(None) == no such record
 
     @_serialised
     def update_record(self, record_id: str, **fields: Any) -> dict:
@@ -187,8 +191,7 @@ class JsonBackend:
             return fail(f"Fields not updatable: {', '.join(sorted(unknown))}.", INVALID)
         try:
             records = self._records()
-            wanted = (record_id or "").strip().upper()
-            match = next((r for r in records if r["id"].upper() == wanted), None)
+            match = self._find(records, record_id)
             if match is None:
                 return fail(f"No record {record_id} exists.", NOT_FOUND)
             match.update(fields)
@@ -313,8 +316,7 @@ class JsonBackend:
             docs = self._documents()
         except (OSError, ValueError) as e:
             return fail(f"Could not read the documents file: {e}", UNAVAILABLE)
-        wanted = (document_id or "").strip().upper()
-        return ok(next((d for d in docs if d["id"].upper() == wanted), None), backend=self.name)
+        return ok(self._find(docs, document_id), backend=self.name)
 
     @_serialised
     def update_document(self, document_id: str, **fields: Any) -> dict:
@@ -323,8 +325,7 @@ class JsonBackend:
             return fail(f"Fields not updatable: {', '.join(sorted(unknown))}.", INVALID)
         try:
             docs = self._documents()
-            wanted = (document_id or "").strip().upper()
-            match = next((d for d in docs if d["id"].upper() == wanted), None)
+            match = self._find(docs, document_id)
             if match is None:
                 return fail(f"No document {document_id} exists.", NOT_FOUND)
             match.update(fields)
@@ -345,10 +346,10 @@ class JsonBackend:
     def delete_document(self, document_id: str) -> dict:
         try:
             docs = self._documents()
-            wanted = (document_id or "").strip().upper()
-            match = next((d for d in docs if d["id"].upper() == wanted), None)
+            match = self._find(docs, document_id)
             if match is None:
                 return fail(f"No document {document_id} exists.", NOT_FOUND)
+            wanted = match["id"].upper()
             # Events first: a crash between the two writes leaves a document
             # without events (re-uploadable), never events without a document.
             events = self._load(self.calendar_path, default=[])

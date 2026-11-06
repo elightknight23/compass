@@ -28,6 +28,12 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
+function fileForm(file: File): FormData {
+  const form = new FormData();
+  form.append("file", file);
+  return form;
+}
+
 export const api = {
   me: () => request<{ user: User; today: string }>("/api/me"),
 
@@ -37,13 +43,10 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ week, timings }),
     }),
-  importMenu: (mess: string, file: File) => {
-    const form = new FormData();
-    form.append("file", file);
-    return request<{ outcome: string; week: MessMenu["week"] }>(
-      `/api/mess/${encodeURIComponent(mess)}/import`, { method: "POST", body: form },
-    );
-  },
+  importMenu: (mess: string, file: File) =>
+    request<{ outcome: string; week: MessMenu["week"] }>(
+      `/api/mess/${encodeURIComponent(mess)}/import`, { method: "POST", body: fileForm(file) },
+    ),
   menuCsvUrl: (mess: string) => `/api/mess/${encodeURIComponent(mess)}.csv`,
   login: (username: string, password: string) =>
     request<{ user: User }>("/api/login", {
@@ -67,13 +70,10 @@ export const api = {
       scope: string[];
       errors: string[];
     }>("/api/queue"),
-  attachCertificate: (id: string, file: File) => {
-    const form = new FormData();
-    form.append("file", file);
-    return request<{ outcome: string; record: CampusRecord }>(
-      `/api/records/${encodeURIComponent(id)}/certificate`, { method: "POST", body: form },
-    );
-  },
+  attachCertificate: (id: string, file: File) =>
+    request<{ outcome: string; record: CampusRecord }>(
+      `/api/records/${encodeURIComponent(id)}/certificate`, { method: "POST", body: fileForm(file) },
+    ),
   act: (id: string, action: string, grantException = false) =>
     request<{ record: CampusRecord; exception_granted: boolean }>(
       `/api/records/${encodeURIComponent(id)}/action`,

@@ -224,21 +224,20 @@ OVERLOADED_COOLDOWN_SECONDS = 20.0
 def _note_rate_limit(name: str, e: Exception) -> None:
     import openai
 
-    if isinstance(e, openai.InternalServerError) and getattr(e, "status_code", None) == 503:
-        _cooling[name] = time.monotonic() + OVERLOADED_COOLDOWN_SECONDS
+    if isinstance(e, openai.RateLimitError):
+        m = re.search(r"retry in ([\d.]+)s", str(e))
+        wait_for = min(float(m.group(1)) if m else 10.0, MAX_COOLDOWN_SECONDS)
+    elif isinstance(e, openai.InternalServerError) and e.status_code == 503:
+        wait_for = OVERLOADED_COOLDOWN_SECONDS
+    else:
         return
-    if not isinstance(e, openai.RateLimitError):
-        return
-    m = re.search(r"retry in ([\d.]+)s", str(e))
-    wait_for = min(float(m.group(1)) if m else 10.0, MAX_COOLDOWN_SECONDS)
     _cooling[name] = time.monotonic() + wait_for
 
 
 def _in_preference_order() -> list[Provider]:
     now = time.monotonic()
-    chain = _require_providers()
-    return ([p for p in chain if _cooling.get(p.name, 0) <= now]
-            + [p for p in chain if _cooling.get(p.name, 0) > now])
+    # sorted() is stable: the configured order holds within each group.
+    return sorted(_require_providers(), key=lambda p: _cooling.get(p.name, 0) > now)
 
 
 # Hedged attempts run here. Threads, not asyncio: the SDK client is
@@ -301,19 +300,13 @@ def _first_answer(attempts: list[tuple[str, Callable[[], R]]]) -> tuple[R, str]:
     raise LLMUnavailable("; ".join(failures))
 
 
-def parse(
-    messages: list[dict], schema: type[T], *, temperature: float = 0
-) -> tuple[T, str]:
-    """Structured output: (validated instance, provider name).
-
-    Raises LLMUnavailable when every provider failed. Callers already treat
-    a model failure as "ask the user" rather than a crash, so one exception
-    type is all they need to catch.
-    """
-    def attempt(p: Provider) -> Callable[[], T]:
-        def run() -> T:
+def _each_provider(call: Callable[[Provider], R]) -> tuple[R, str]:
+    """Run `call` against the providers in preference order (_first_answer),
+    sorting its failures into "try the next one" and genuine bugs."""
+    def attempt(p: Provider) -> Callable[[], R]:
+        def run() -> R:
             try:
-                return _parse_with(p, messages, schema, temperature)
+                return call(p)
             except ValidationError as e:
                 raise _Unusable(f"reply did not match the schema ({e.error_count()} errors)") from e
             except Exception as e:  # noqa: BLE001 — classified just below
@@ -326,6 +319,18 @@ def parse(
     return _first_answer([(p.name, attempt(p)) for p in _in_preference_order()])
 
 
+def parse(
+    messages: list[dict], schema: type[T], *, temperature: float = 0
+) -> tuple[T, str]:
+    """Structured output: (validated instance, provider name).
+
+    Raises LLMUnavailable when every provider failed. Callers already treat
+    a model failure as "ask the user" rather than a crash, so one exception
+    type is all they need to catch.
+    """
+    return _each_provider(lambda p: _parse_with(p, messages, schema, temperature))
+
+
 def complete(
     messages: list[dict],
     *,
@@ -333,21 +338,13 @@ def complete(
     max_tokens: int | None = None,
 ) -> tuple[str, str]:
     """Free-text completion: (text, provider name). Same fallback rules."""
-    def attempt(p: Provider) -> Callable[[], str]:
-        def run() -> str:
-            try:
-                resp = _completion(p, lambda: client(p.name).chat.completions.create(
-                    model=p.model,
-                    temperature=temperature,
-                    messages=messages,
-                    **({"max_tokens": max_tokens} if max_tokens else {}),
-                ))
-            except Exception as e:  # noqa: BLE001
-                if not _is_availability_error(e):
-                    raise
-                _note_rate_limit(p.name, e)
-                raise _Unusable(f"{type(e).__name__}: {e}") from e
-            return (resp.choices[0].message.content or "").strip()
-        return run
+    def text(p: Provider) -> str:
+        resp = _completion(p, lambda: client(p.name).chat.completions.create(
+            model=p.model,
+            temperature=temperature,
+            messages=messages,
+            **({"max_tokens": max_tokens} if max_tokens else {}),
+        ))
+        return (resp.choices[0].message.content or "").strip()
 
-    return _first_answer([(p.name, attempt(p)) for p in _in_preference_order()])
+    return _each_provider(text)

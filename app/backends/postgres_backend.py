@@ -135,10 +135,17 @@ class PostgresBackend:
         return fail(f"the database could not be reached ({type(e).__name__})", UNAVAILABLE)
 
     # -- records -----------------------------------------------------------
-    def _next_id(self, db: Session, prefix: str, start: int) -> str:
-        ids = db.scalars(select(Record.id).where(Record.id.like(f"{prefix}%"))).all()
+    @staticmethod
+    def _next_id(db: Session, column, prefix: str, start: int) -> str:
+        ids = db.scalars(select(column).where(column.like(f"{prefix}%"))).all()
         used = [int(i[len(prefix):]) for i in ids if i[len(prefix):].isdigit()]
         return f"{prefix}{max(used, default=start - 1) + 1}"
+
+    @staticmethod
+    def _find_record(db: Session, record_id: str) -> Record | None:
+        return db.scalar(
+            select(Record).where(func.upper(Record.id) == (record_id or "").strip().upper())
+        )
 
     def _insert(self, record_type: str, **fields: Any) -> dict:
         prefix, start = (
@@ -148,7 +155,7 @@ class PostgresBackend:
             try:
                 with self._ALLOCATE, self._db() as db, db.begin():
                     row = Record(
-                        id=self._next_id(db, prefix, start),
+                        id=self._next_id(db, Record.id, prefix, start),
                         type=record_type,
                         created_at=clock.today().isoformat(),
                         **fields,
@@ -191,9 +198,7 @@ class PostgresBackend:
     def get_record(self, record_id: str) -> dict:
         try:
             with self._db() as db:
-                row = db.scalar(
-                    select(Record).where(func.upper(Record.id) == (record_id or "").strip().upper())
-                )
+                row = self._find_record(db, record_id)
                 return ok(_as_dict(row) if row else None, backend=self.name)
         except SQLAlchemyError as e:
             return self._unavailable(e)
@@ -204,9 +209,7 @@ class PostgresBackend:
             return fail(f"Fields not updatable: {', '.join(sorted(unknown))}.", INVALID)
         try:
             with self._db() as db, db.begin():
-                row = db.scalar(
-                    select(Record).where(func.upper(Record.id) == (record_id or "").strip().upper())
-                )
+                row = self._find_record(db, record_id)
                 if row is None:
                     return fail(f"No record {record_id} exists.", NOT_FOUND)
                 for k, v in fields.items():
@@ -314,10 +317,7 @@ class PostgresBackend:
         for attempt in range(self.ALLOCATE_ATTEMPTS):  # same id race as _insert
             try:
                 with self._ALLOCATE, self._db() as db, db.begin():
-                    ids = db.scalars(select(Document.id)).all()
-                    used = [int(i[len(DOCUMENT_PREFIX):]) for i in ids
-                            if i[len(DOCUMENT_PREFIX):].isdigit()]
-                    row = Document(id=f"{DOCUMENT_PREFIX}{max(used, default=DOCUMENT_START - 1) + 1}",
+                    row = Document(id=self._next_id(db, Document.id, DOCUMENT_PREFIX, DOCUMENT_START),
                                    **fields)
                     db.add(row)
                 return ok(_doc_dict(row), backend=self.name)

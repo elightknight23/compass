@@ -200,8 +200,6 @@ def _inside(inner: tuple, outer: tuple) -> bool:
             and inner[2] <= outer[2] + 1 and inner[3] <= outer[3] + 1) and inner != outer
 
 
-_DAY_HEADS = {name.lower(): i for i, name in enumerate(_calendar.day_name)}
-_DAY_HEADS.update({name.lower(): i for i, name in enumerate(_calendar.day_abbr)})
 _WEEK_NO_RE = re.compile(r"^\(?\s*week\s*\d+\s*\)?$", re.I)
 _ONLY_WEEKDAY_RE = re.compile(r"^\(\s*([A-Za-z]+)\s*\)$")
 
@@ -223,12 +221,12 @@ def _grid_days(page, table, number: int) -> list[Block] | None:
         words = page.within_bbox(box).extract_words(use_text_flow=False)
     except Exception:  # noqa: BLE001 — a malformed table is read as rows instead
         return None
-    heads = sorted((w for w in words if w["text"].lower().rstrip(".") in _DAY_HEADS),
+    heads = sorted((w for w in words if w["text"].lower().rstrip(".") in WEEKDAYS),
                    key=lambda w: w["top"])
     if not heads:
         return None
     header = [w for w in heads if abs(w["top"] - heads[0]["top"]) < 3]
-    if len({_DAY_HEADS[w["text"].lower().rstrip(".")] for w in header}) < 5:
+    if len({WEEKDAYS[w["text"].lower().rstrip(".")] for w in header}) < 5:
         return None
     # A column is the header's whole cell, not where its text sits: a
     # left-aligned "MON" is nearer the Sunday square's right-hand words
@@ -239,7 +237,7 @@ def _grid_days(page, table, number: int) -> list[Block] | None:
         mid = (w["x0"] + w["x1"]) / 2
         cell = min((c for c in cells if c[0] <= mid <= c[2] and c[1] <= w["top"] <= c[3]),
                    key=lambda c: c[2] - c[0], default=(w["x0"], 0, w["x1"], 0))
-        columns.append((cell[0], cell[2], _DAY_HEADS[w["text"].lower().rstrip(".")]))
+        columns.append((cell[0], cell[2], WEEKDAYS[w["text"].lower().rstrip(".")]))
     below = max(w["bottom"] for w in header)
 
     def column_of(mid: float) -> int:
@@ -272,7 +270,7 @@ def _grid_days(page, table, number: int) -> list[Block] | None:
         # "Mid-" at a line end and "Semester" on the next are one word.
         label = re.sub(r"(\w)- (\w)", r"\1-\2", " ".join(label_lines)).strip()
         m = _ONLY_WEEKDAY_RE.match(label)
-        if m and m.group(1).lower() in _DAY_HEADS:
+        if m and m.group(1).lower() in WEEKDAYS:
             label = f"Follows {m.group(1).title()}'s timetable"  # a compensatory working day
         if label:
             blocks.append(Block(number, "day", f"{when} | {label}", cells=[when, label]))

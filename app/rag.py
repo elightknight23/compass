@@ -381,9 +381,8 @@ def index_document(doc: dict, markdown: str) -> int:
     """
     chunks = document_chunks(doc, markdown)
     with _INDEX_LOCK:
-        try:
-            col = chroma().get_collection(STRUCT_COLLECTION)
-        except Exception:  # noqa: BLE001 — no index yet: build the base one first
+        col = _collection()
+        if col is None:  # no index yet: build the base one first
             _build_index_locked()
             col = chroma().get_collection(STRUCT_COLLECTION)
         col.delete(where={"doc_id": doc["id"]})
@@ -392,34 +391,35 @@ def index_document(doc: dict, markdown: str) -> int:
     return len(chunks)
 
 
+def _collection(name: str = STRUCT_COLLECTION):
+    """The collection, or None when there is no index yet."""
+    try:
+        return chroma().get_collection(name)
+    except Exception:  # noqa: BLE001 — no collection is an answer, not an error
+        return None
+
+
 def remove_document(doc_id: str) -> None:
     """Drop one upload's chunks. Safe when there are none, or no index."""
     with _INDEX_LOCK:
-        try:
-            col = chroma().get_collection(STRUCT_COLLECTION)
-        except Exception:  # noqa: BLE001
-            return
-        col.delete(where={"doc_id": doc_id})
+        if col := _collection():
+            col.delete(where={"doc_id": doc_id})
 
 
 def stamp_index() -> None:
     """Record that the index now matches the corpus (after an incremental
     add or remove whose registry change has landed)."""
     with _INDEX_LOCK:
-        try:
-            col = chroma().get_collection(STRUCT_COLLECTION)
-        except Exception:  # noqa: BLE001
-            return
         # Only corpus_hash: re-sending hnsw:space is refused by ChromaDB, and
         # leaving it out keeps the collection's distance function as built.
-        col.modify(metadata={"corpus_hash": corpus_hash()})
+        if col := _collection():
+            col.modify(metadata={"corpus_hash": corpus_hash()})
 
 
 def index_status(collection: str = STRUCT_COLLECTION) -> dict:
     """{"state": "fresh"|"stale"|"missing", ...}. Never raises."""
-    try:
-        col = chroma().get_collection(collection)
-    except Exception:  # noqa: BLE001 — no collection is an answer, not an error
+    col = _collection(collection)
+    if col is None:
         return {"state": "missing", "detail": "run scripts/index_docs.py"}
     indexed = (col.metadata or {}).get("corpus_hash")
     current = corpus_hash()
