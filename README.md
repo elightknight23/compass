@@ -53,10 +53,10 @@ computes a date, a percentage or a permission.
 
 <table align="center">
   <tr>
-    <td align="center" width="25%"><h2>11</h2><sub>intents, routed by<br>one classifier</sub></td>
-    <td align="center" width="25%"><h2>816</h2><sub>offline checks, no model<br>and no network</sub></td>
-    <td align="center" width="25%"><h2>67 / 67</h2><sub>intent eval, against a<br>59–61 thin baseline</sub></td>
-    <td align="center" width="25%"><h2>₹0</h2><sub>free-tier model,<br>local embeddings</sub></td>
+    <td align="center" width="170"><h3>11</h3><sub>intents · one classifier</sub></td>
+    <td align="center" width="170"><h3>816</h3><sub>offline checks · no network</sub></td>
+    <td align="center" width="170"><h3>67 / 67</h3><sub>intent eval · baseline 59–61</sub></td>
+    <td align="center" width="170"><h3>₹0</h3><sub>to run · free tier, local embeddings</sub></td>
   </tr>
 </table>
 
@@ -112,7 +112,7 @@ outcomes depending **only on who is signed in**:
 
 ```mermaid
 %%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','primaryColor':'#fbf8f2','primaryBorderColor':'#2d6757','primaryTextColor':'#253238','lineColor':'#7a7c76'}}}%%
-flowchart LR
+flowchart TD
     U1(["💬 Student chat"]) --> API
     U2(["🗂 Staff console"]) --> API
     API["<b>FastAPI</b><br/>identity from a signed<br/>session cookie, nowhere else"] --> CL
@@ -163,13 +163,13 @@ swapping the two checks fails five assertions.
 The attendance projection is the heart of the domain (`app/attendance.py`). The model reports the
 dates it heard, `dates.py` counts working days, and this rule does the division:
 
-$$
-\text{projected} \;=\; \frac{\text{attended} + \text{present}}{\text{held} + \text{added}}
-\qquad
-\text{added} = \text{working days} \times 6
-\qquad
-\text{present} = \begin{cases} \text{added} & \text{OD (condoned)} \\ 0 & \text{medical, family emergency} \end{cases}
-$$
+```math
+\begin{aligned}
+\text{projected} &= \frac{\text{attended} + \text{present}}{\text{held} + \text{added}} \\[6pt]
+\text{added} &= \text{working days} \times 6 \text{ periods} \\[6pt]
+\text{present} &= \begin{cases} \text{added} & \text{OD (condoned, counts as present)} \\ 0 & \text{medical or family emergency} \end{cases}
+\end{aligned}
+```
 
 Ravi has attended 457 of 600 periods, so he's at **76.2%**, with one day of margin:
 
