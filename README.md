@@ -443,49 +443,36 @@ self-consistency, not resilience to wording from strangers.
 
 ## ✦ Architecture
 
-<table>
-<tr><td>
-
 ```
 app/
-  main.py        FastAPI: login, chat (SSE), records, queue, actions
-  graph.py       the classifier and the LangGraph StateGraph
-  handlers.py    one handler per intent + apply_staff_action
-  state.py       AgentState and the Intent enum
-  rag.py         chunking, local embeddings, filtered retrieval
-  documents.py   PDF/DOCX extraction, syllabus structure, dates
-  library.py     upload · ingest · delete · calendar review
-  mess.py        menus, CSV, the sample, the warden's save
-  certificates.py who attaches, who opens, the redacted copy
-  tracker.py     the one-way GitHub Issues mirror
-  dates.py       DateSpec → resolve() → working days
-  attendance.py  the projection, and nothing else
-  clock.py       the one definition of "today"
-  auth.py        scrypt, signed sessions, ROLE_CAPABILITIES
-  llm.py         Gemini chain: hedged, budgeted, pooled
-  backends/      the swap boundary: postgres | json
-```
-
-</td><td>
-
-```
+  main.py          FastAPI: login, chat (SSE), records, queue, actions
+  graph.py         the classifier and the LangGraph StateGraph
+  handlers.py      one handler per intent + apply_staff_action
+  state.py         AgentState and the Intent enum
+  rag.py           chunking, local embeddings, filtered retrieval
+  documents.py     PDF/DOCX extraction, syllabus structure, calendar dates
+  library.py       upload · ingest · delete · calendar review
+  mess.py          menus, CSV, the sample, the warden's save
+  certificates.py  who attaches, who opens, the redacted copy
+  tracker.py       the one-way GitHub Issues mirror
+  dates.py         DateSpec → resolve() → working days
+  attendance.py    the projection, and nothing else
+  clock.py         the one definition of "today"
+  auth.py          scrypt, signed sessions, ROLE_CAPABILITIES
+  llm.py           the Gemini chain: hedged, budgeted, pooled
+  backends/        the swap boundary: postgres | json
 docs/
-  regulations/   the built-in corpus (re-index after edits)
-  artifacts/     captured harness output, for offline demos
-  diagrams/      the LangGraph flow
-data/            seed: users, attendance, holidays, records
-scripts/         tests, eval harnesses, indexing, seeding
-web/             React + Vite + TypeScript
+  regulations/     the built-in corpus (re-index after edits)
+  artifacts/       captured harness output, for offline demos
+  diagrams/        the LangGraph flow
+data/              seed: users, attendance, holidays, records
+scripts/           tests, eval harnesses, indexing, seeding
+web/               React + Vite + TypeScript
 ```
 
-**Stack**
-
-FastAPI · LangGraph · Pydantic structured output · Gemini free tier (OpenAI SDK) · ChromaDB +
-ONNX MiniLM · SQLAlchemy + Postgres 16, or atomic JSON files · React 18 + Vite + TypeScript ·
-scrypt + HMAC-signed sessions
-
-</td></tr>
-</table>
+**Stack:** FastAPI · LangGraph · Pydantic structured output · Gemini free tier via the OpenAI SDK ·
+ChromaDB + ONNX MiniLM · SQLAlchemy + Postgres 16, or atomic JSON files · React 18 + Vite +
+TypeScript · scrypt + HMAC-signed sessions
 
 More diagrams: [`docs/diagrams/langgraph_flow.md`](docs/diagrams/langgraph_flow.md).
 
