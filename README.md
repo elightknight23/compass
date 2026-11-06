@@ -53,10 +53,10 @@ computes a date, a percentage or a permission.
 
 <table align="center">
   <tr>
-    <td align="center" width="170"><h3>11</h3><sub>intents · one classifier</sub></td>
-    <td align="center" width="170"><h3>816</h3><sub>offline checks · no network</sub></td>
-    <td align="center" width="170"><h3>67 / 67</h3><sub>intent eval · baseline 59–61</sub></td>
-    <td align="center" width="170"><h3>₹0</h3><sub>to run · free tier, local embeddings</sub></td>
+    <td align="center" width="170"><h3>11</h3><sub>intents, one classifier</sub></td>
+    <td align="center" width="170"><h3>816</h3><sub>offline checks</sub></td>
+    <td align="center" width="170"><h3>67 / 67</h3><sub>intent eval</sub></td>
+    <td align="center" width="170"><h3>₹0</h3><sub>to run</sub></td>
   </tr>
 </table>
 
